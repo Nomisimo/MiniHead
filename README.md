@@ -39,8 +39,8 @@ Dieses Projekt basiert auf der hervorragenden Arbeit von **cooke001** und seinem
 
 ```bash
 # Repository klonen
-git clone https://github.com/DEIN-USERNAME/DEIN-REPO.git
-cd DEIN-REPO
+git clone https://github.com/Nomisimo/MiniHead.git
+cd MiniHead
 
 # Abhängigkeiten installieren (falls zutreffend)
 # z. B. PlatformIO, Arduino IDE etc.

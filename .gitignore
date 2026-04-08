@@ -2,3 +2,7 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+
+
+#FreeCAD
+.FCBak

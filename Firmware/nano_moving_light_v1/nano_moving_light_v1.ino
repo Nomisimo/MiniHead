@@ -1,15 +1,15 @@
 /*
- * Nano Moving Light – v1
+ * Nano Moving Light – v1 (RGBW + Rainbow)
  * Hardware: ESP32-C3 Super Mini
- * LED:      WS2812B (1x Pixel, GPIO8)
+ * LED:      WS2812B RGBW (1x Pixel, GPIO8)
  * Servos:   SG90 Pan (GPIO2), SG90 Tilt (GPIO3)
  * Control:  Serial ASCII über USB-C (115200 Baud)
  *
  * Protokoll (eine Zeile, \n abgeschlossen):
- *   R:255,G:128,B:0
+ *   R:255,G:128,B:0,W:0
  *   PAN:90
  *   TILT:45
- *   R:255,G:0,B:0,PAN:90,TILT:30
+ *   R:255,G:0,B:0,W:128,PAN:90,TILT:30
  *   RAINBOW:1          → Regenbogen starten
  *   RAINBOW:0          → Regenbogen stoppen
  *
@@ -30,6 +30,9 @@
 // ── Servo-Grenzen (SG90: 0–180°) ─────────────────────────────────
 #define SERVO_MIN 0
 #define SERVO_MAX 180
+
+// ── Regenbogen-Geschwindigkeit ────────────────────────────────────
+#define RAINBOW_DELAY_MS 20  // ms pro Schritt, kleiner = schneller
 
 // ── Objekte ───────────────────────────────────────────────────────
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
@@ -88,12 +91,12 @@ void parseToken(String token) {
   String val = token.substring(sep + 1);
   key.toUpperCase();
 
-  if      (key == "R")    { curR = (uint8_t)constrain(val.toInt(), 0, 255); }
-  else if (key == "G")    { curG = (uint8_t)constrain(val.toInt(), 0, 255); }
-  else if (key == "B")    { curB = (uint8_t)constrain(val.toInt(), 0, 255); }
-  else if (key == "W") { curW = (uint8_t)constrain(val.toInt(), 0, 255); }
-  else if (key == "PAN")  { setPan(val.toInt());  }
-  else if (key == "TILT") { setTilt(val.toInt()); } 
+  if      (key == "R")       { curR = (uint8_t)constrain(val.toInt(), 0, 255); }
+  else if (key == "G")       { curG = (uint8_t)constrain(val.toInt(), 0, 255); }
+  else if (key == "B")       { curB = (uint8_t)constrain(val.toInt(), 0, 255); }
+  else if (key == "W")       { curW = (uint8_t)constrain(val.toInt(), 0, 255); }
+  else if (key == "PAN")     { setPan(val.toInt());  }
+  else if (key == "TILT")    { setTilt(val.toInt()); }
   else if (key == "RAINBOW") {
     rainbowActive = (val.toInt() == 1);
     rainbowHue = 0;
@@ -116,11 +119,7 @@ void parseLine(String line) {
   line.trim();
   if (line.length() == 0) return;
 
-  bool ledChanged = false;
-
-  // Merke aktuelle LED-Werte, um nach dem Parsen zu prüfen ob Update nötig
   uint8_t prevR = curR, prevG = curG, prevB = curB, prevW = curW;
-
 
   int start = 0;
   while (true) {
@@ -132,12 +131,12 @@ void parseLine(String line) {
     start = comma + 1;
   }
 
-   // LED nur updaten wenn kein Regenbogen aktiv und sich etwas geändert hat
+  // LED nur updaten wenn kein Regenbogen aktiv und sich etwas geändert hat
   if (!rainbowActive && (curR != prevR || curG != prevG || curB != prevB || curW != prevW)) {
     setLED(curR, curG, curB, curW);
   }
 
-   // Status-Echo (nur wenn kein reiner RAINBOW-Befehl)
+  // Status-Echo (nur wenn kein reiner RAINBOW-Befehl)
   if (line.indexOf("RAINBOW") < 0) {
     Serial.print("[OK] R:");  Serial.print(curR);
     Serial.print(" G:");      Serial.print(curG);
@@ -148,38 +147,36 @@ void parseLine(String line) {
   }
 }
 
-
-
-
 // ── Setup ─────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  while (!Serial) delay(10); // ESP32-C3: kurz warten bis USB-Serial bereit
+  while (!Serial) delay(10);
 
   // NeoPixel initialisieren
   strip.begin();
   strip.setBrightness(255);
-  setLED(0, 0, 0, ); // LED aus
+  setLED(0, 0, 0, 0);
 
   // Servos initialisieren
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   servoPan.setPeriodHertz(50);
   servoTilt.setPeriodHertz(50);
-  servoPan.attach(SERVO_PAN_PIN,  500, 2400); // SG90 Pulsbreite
+  servoPan.attach(SERVO_PAN_PIN,  500, 2400);
   servoTilt.attach(SERVO_TIL_PIN, 500, 2400);
   setPan(90);
   setTilt(90);
 
-  Serial.println("=== Nano Moving Light v1 bereit ===");
-  Serial.println("Protokoll: R:255,G:0,B:0,PAN:90,TILT:45");
-   Serial.println("Regenbogen: RAINBOW:1 / RAINBOW:0");
+  Serial.println("=== Nano Moving Light v1 (RGBW + Rainbow) bereit ===");
+  Serial.println("Protokoll: R:255,G:0,B:0,W:0,PAN:90,TILT:45");
+  Serial.println("Regenbogen: RAINBOW:1 / RAINBOW:0");
 }
 
 // ── Loop ──────────────────────────────────────────────────────────
 String inputBuffer = "";
 
 void loop() {
+  // Serial einlesen
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\n') {
@@ -189,8 +186,8 @@ void loop() {
       inputBuffer += c;
     }
   }
-}
-// Regenbogen-Schritt (non-blocking via millis)
+
+  // Regenbogen-Schritt (non-blocking via millis)
   if (rainbowActive) {
     unsigned long now = millis();
     if (now - lastRainbowStep >= RAINBOW_DELAY_MS) {

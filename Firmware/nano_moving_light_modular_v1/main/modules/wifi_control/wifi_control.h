@@ -11,7 +11,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "html_page.h"
-#include "../core.h"
+#include "core_globals.h"
 
 // ── !! CHANGE THESE !! ───────────────────────────────────────────
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";

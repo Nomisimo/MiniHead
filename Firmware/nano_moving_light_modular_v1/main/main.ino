@@ -14,12 +14,14 @@
 
 void setup() {
   Serial.begin(115200);
+  core_setup();
   for (int i = 0; i < MODULE_COUNT; i++) {
     modules[i].setup();
   }
 }
 
 void loop() {
+  core_loop();
   for (int i = 0; i < MODULE_COUNT; i++) {
     modules[i].loop();
   }

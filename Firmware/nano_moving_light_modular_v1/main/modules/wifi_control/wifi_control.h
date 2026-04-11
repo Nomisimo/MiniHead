@@ -11,6 +11,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "html_page.h"
+#include "../core.h"
 
 // ── !! CHANGE THESE !! ───────────────────────────────────────────
 const char* WIFI_SSID     = "TP-LINK_4A2CEC";

@@ -101,12 +101,14 @@ void discovery_elect() {
 
   // Self
   strncpy(candidates[n].mac, ownMAC, 17);
+  candidates[n].mac[17] = 0;
   candidates[n].fixID = ownFixID;
   n++;
 
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active) continue;
     strncpy(candidates[n].mac, peers[i].mac, 17);
+    candidates[n].mac[17] = 0;
     candidates[n].fixID = peers[i].fixID;
     n++;
   }
@@ -136,6 +138,10 @@ void discovery_elect() {
     }
   } else if (!iAmLeader && nodeRole != ROLE_FOLLOWER) {
     nodeRole = ROLE_FOLLOWER;
+    if (_webServerStarted) {
+      wifi_control_stop();
+      _webServerStarted = false;  // allow restart if we become leader again
+    }
     Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s\n", candidates[winIdx].mac);
   }
 }
@@ -160,11 +166,11 @@ void discovery_parseBeacon(const char* data, int len) {
 
   if (strncmp(buf, "MINIHEAD|", 9) != 0) return;
 
-  char* fields[5];
+  char* fields[4];
   int   fi = 0;
   char* tok = strtok(buf + 9, "|");
-  while (tok && fi < 5) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
-  if (fi < 5) return;
+  while (tok && fi < 4) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
+  if (fi < 4) return;
 
   const char* mac   = fields[0];
   const char* ip    = fields[1];
@@ -176,6 +182,12 @@ void discovery_parseBeacon(const char* data, int len) {
 
   discovery_addOrUpdate(mac, ip, fixID, role);
   Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s\n", mac, ip, fixID, fields[3]);
+
+  // If we are LEADER and heard another LEADER, re-elect immediately
+  // (step-down is beacon-driven, not timer-driven)
+  if (nodeRole == ROLE_LEADER && role == ROLE_LEADER) {
+    discovery_elect();
+  }
 }
 
 // ── Module lifecycle ──────────────────────────────────────────────
@@ -216,7 +228,8 @@ void discovery_setup() {
   discovery_elect();
   _electionDone = true;
 
-  // Send first beacon immediately
+  // Send first beacon (with IP)
+  strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
   discovery_sendBeacon();
   _lastBeaconSent = millis();
 }
@@ -230,11 +243,29 @@ void discovery_loop() {
     discovery_parseBeacon(buf, n);
   }
 
-  // ── Prune stale peers & re-elect if leader lost ───────────────
+  // ── Prune stale peers & step-up with hold ────────────────────
+  // Step-DOWN : beacon-driven (discovery_parseBeacon).
+  // Step-UP   : only after peer stale (LEADER_TIMEOUT_MS) +
+  //             10s hold where ESP keeps last state, then re-elects.
+  static unsigned long _leaderGoneAt = 0;
+  static bool          _inHold       = false;
   discovery_pruneStale();
-  if (nodeRole == ROLE_FOLLOWER && !discovery_leaderAlive()) {
-    Serial.println("[Discovery] Leader lost — re-electing...");
-    discovery_elect();
+
+  if (discovery_leaderAlive()) {
+    _leaderGoneAt = 0;
+    _inHold       = false;
+  } else if (nodeRole == ROLE_FOLLOWER) {
+    if (_leaderGoneAt == 0) {
+      _leaderGoneAt = millis();
+      _inHold       = true;
+      Serial.println("[Discovery] Leader signal lost — holding...");
+    }
+    if (_inHold && millis() - _leaderGoneAt > HOLD_DURATION_MS) {
+      _inHold = false;
+      Serial.println("[Discovery] Hold expired — re-electing...");
+      _leaderGoneAt = 0;
+      discovery_elect();
+    }
   }
 
   // ── Broadcast own beacon ──────────────────────────────────────

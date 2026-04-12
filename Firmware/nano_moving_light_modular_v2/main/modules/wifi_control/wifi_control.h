@@ -396,6 +396,11 @@ void wifi_control_setup() {
   Serial.println("[WiFi] Server started");
 }
 
+void wifi_control_stop() {
+  server.stop();
+  Serial.println("[WiFi] Server stopped (not leader)");
+}
+
 // ── Module lifecycle ──────────────────────────────────────────────
 
 

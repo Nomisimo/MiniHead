@@ -14,8 +14,8 @@
 #include "core_globals.h"
 
 // ── !! CHANGE THESE !! ───────────────────────────────────────────
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "TP-LINK_4A2CEC";
+const char* WIFI_PASSWORD = "98764013";
 // ─────────────────────────────────────────────────────────────────
 
 #define MAX_CUES 32

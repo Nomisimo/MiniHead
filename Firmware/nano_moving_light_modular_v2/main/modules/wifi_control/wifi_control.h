@@ -19,8 +19,9 @@
 
 // in config.h — their types and functions are already available here.
 
-#define MAX_CUES     32
-#define MAX_TARGETS  16   // max target MACs per cue
+#define MAX_CUES         32
+#define MAX_TARGETS      16   // max FixID targets per cue
+#define CUES_NVS_VERSION 2    // bump when Cue struct changes
 
 WebServer server(80);
 Preferences prefs;
@@ -30,7 +31,7 @@ struct Cue {
   char name[32];
   uint8_t r, g, b, w;
   int pan, tilt;
-  char targets[MAX_TARGETS][18]; // MAC strings, "*" = all, "self" = leader only
+  int fixTargets[MAX_TARGETS];   // FixIDs (>0); 0 = broadcast all
   int targetCount;
 };
 Cue cues[MAX_CUES];
@@ -48,6 +49,7 @@ unsigned long lastSeqStep = 0;
 
 void saveCuesToFlash() {
   prefs.begin("cues", false);
+  prefs.putInt("version", CUES_NVS_VERSION);
   prefs.putInt("count", cueCount);
   for (int i=0; i<cueCount; i++)
     prefs.putBytes(("c"+String(i)).c_str(), &cues[i], sizeof(Cue));
@@ -55,7 +57,15 @@ void saveCuesToFlash() {
 }
 
 void loadCuesFromFlash() {
-  prefs.begin("cues", true);
+  prefs.begin("cues", false);
+  if (prefs.getInt("version", 0) != CUES_NVS_VERSION) {
+    prefs.clear();
+    prefs.putInt("version", CUES_NVS_VERSION);
+    prefs.end();
+    cueCount = 0;
+    Serial.println("[WiFi] Cue store migrated — old cues cleared");
+    return;
+  }
   cueCount = prefs.getInt("count", 0);
   if (cueCount > MAX_CUES) cueCount = 0;
   for (int i=0; i<cueCount; i++)
@@ -70,11 +80,11 @@ void sendJson(int code, const String& json) {
   server.send(code, "application/json", json);
 }
 
-String targetsToJson(const Cue& c) {
+String fixTargetsToJson(const Cue& c) {
   String s = "[";
   for (int i=0; i<c.targetCount; i++) {
     if (i>0) s+=",";
-    s+="\""; s+=c.targets[i]; s+="\"";
+    s+=String(c.fixTargets[i]);
   }
   s+="]";
   return s;
@@ -86,7 +96,7 @@ String cueToJson(const Cue& c) {
     ",\"r\":"   + c.r   + ",\"g\":" + c.g +
     ",\"b\":"   + c.b   + ",\"w\":" + c.w +
     ",\"pan\":" + c.pan + ",\"tilt\":" + c.tilt +
-    ",\"targets\":" + targetsToJson(c) + "}";
+    ",\"fixTargets\":" + fixTargetsToJson(c) + "}";
 }
 
 // ── Fire a cue to all its targets ────────────────────────────────
@@ -97,36 +107,29 @@ void fireCueToTargets(const Cue& c) {
                ",B:" + String(c.b) + ",W:" + String(c.w) +
                ",PAN:" + String(c.pan) + ",TILT:" + String(c.tilt);
 
-  bool toAll  = false;
-  bool toSelf = false;
-  for (int t=0; t<c.targetCount; t++) {
-    if (strcmp(c.targets[t], "*")    == 0) { toAll  = true; break; }
-    if (strcmp(c.targets[t], "self") == 0) { toSelf = true; }
-  }
+  // fixTargets[0]==0 (or no targets) → broadcast all
+  bool toAll = (c.targetCount == 0) ||
+               (c.targetCount == 1 && c.fixTargets[0] == 0);
 
   if (toAll) {
-    // Fire self
     rainbowActive = false;
     applyCommand(cmd);
-    // Broadcast to all peers
     udp_broadcastCommand(cmd.c_str());
     return;
   }
 
-  for (int t=0; t<c.targetCount; t++) {
-    if (strcmp(c.targets[t], "self") == 0) {
+  for (int t = 0; t < c.targetCount; t++) {
+    int fid = c.fixTargets[t];
+    // Fire self if our FixID matches
+    if (ownFixID > 0 && ownFixID == fid) {
       rainbowActive = false;
       applyCommand(cmd);
-    } else if (strcmp(c.targets[t], ownMAC) == 0) {
-      rainbowActive = false;
-      applyCommand(cmd);
-    } else {
-      // Find peer IP
-      for (int i=0; i<peerCount; i++) {
-        if (peers[i].active && strcmp(peers[i].mac, c.targets[t]) == 0) {
-          udp_sendCommand(peers[i].ip, peers[i].mac, cmd.c_str());
-          break;
-        }
+    }
+    // Send to any peer with matching FixID
+    for (int i = 0; i < peerCount; i++) {
+      if (peers[i].active && peers[i].fixID == fid) {
+        udp_sendCommand(peers[i].ip, peers[i].mac, cmd.c_str());
+        break;
       }
     }
   }
@@ -278,19 +281,18 @@ void handleSaveCue() {
   c.w    = constrain((int)doc["w"],    0,255);
   c.pan  = constrain((int)doc["pan"],  0,180);
   c.tilt = constrain((int)doc["tilt"], 0,180);
-  // Targets
+  // FixID targets
   c.targetCount = 0;
-  JsonArray tArr = doc["targets"].as<JsonArray>();
+  JsonArray tArr = doc["fixTargets"].as<JsonArray>();
   if (!tArr.isNull()) {
     for (JsonVariant v : tArr) {
       if (c.targetCount >= MAX_TARGETS) break;
-      strlcpy(c.targets[c.targetCount++], v.as<const char*>(), 18);
+      c.fixTargets[c.targetCount++] = v.as<int>();
     }
   }
   if (c.targetCount == 0) {
-    // Default: self only
-    strlcpy(c.targets[0], "self", 18);
-    c.targetCount = 1;
+    c.fixTargets[0] = 0; // default: broadcast all
+    c.targetCount   = 1;
   }
   cueCount++;
   saveCuesToFlash();
@@ -307,11 +309,11 @@ void handleUpdateCueTargets() {
     if (cues[i].id == id) {
       JsonDocument doc;
       if (deserializeJson(doc, server.arg("plain"))) { sendJson(400,"{\"status\":\"error\"}"); return; }
-      JsonArray tArr = doc["targets"].as<JsonArray>();
+      JsonArray tArr = doc["fixTargets"].as<JsonArray>();
       cues[i].targetCount = 0;
       for (JsonVariant v : tArr) {
         if (cues[i].targetCount >= MAX_TARGETS) break;
-        strlcpy(cues[i].targets[cues[i].targetCount++], v.as<const char*>(), 18);
+        cues[i].fixTargets[cues[i].targetCount++] = v.as<int>();
       }
       saveCuesToFlash();
       sendJson(200,"{\"status\":\"ok\",\"cue\":"+cueToJson(cues[i])+"}");

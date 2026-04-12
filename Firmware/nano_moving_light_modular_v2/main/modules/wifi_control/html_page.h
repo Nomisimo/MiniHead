@@ -292,17 +292,26 @@ function stopSequencer(){fetch('/api/sequencer/stop',{method:'POST'}).then(funct
 function sendRaw(){var cmd=document.getElementById('cmdInput').value.trim();if(!cmd)return;sendCommand(cmd);toast('Sent: '+cmd);}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
 updatePreview();loadCues();
-// Load discovery panel into module slot
-fetch('/modules/discovery/discovery_panel.html')
-  .then(function(r){return r.text();})
-  .then(function(html){
-    var el=document.getElementById('module-container');
-    if(el){el.innerHTML=html;}
-  })
-  .catch(function(){
-    var el=document.getElementById('module-container');
-    if(el){el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">// Discovery module not available</div>';}
-  });
+// Load discovery panel — re-create script tags so they execute
+function loadModule(url, id) {
+  fetch(url)
+    .then(function(r){return r.text();})
+    .then(function(html){
+      var el=document.getElementById(id);
+      if(!el) return;
+      el.innerHTML=html;
+      el.querySelectorAll('script').forEach(function(old){
+        var s=document.createElement('script');
+        s.textContent=old.textContent;
+        old.parentNode.replaceChild(s,old);
+      });
+    })
+    .catch(function(){
+      var el=document.getElementById(id);
+      if(el) el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">// Discovery module not available</div>';
+    });
+}
+loadModule('/modules/discovery/discovery_panel.html','module-container');
 </script>
 </body>
 </html>

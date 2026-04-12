@@ -1,4 +1,5 @@
 #pragma once
+#include "plugin_registry.h"
 
 // ── Core Module ───────────────────────────────────────────────────
 // Handles: RGBW LED output, Servo Pan/Tilt, Rainbow effect,

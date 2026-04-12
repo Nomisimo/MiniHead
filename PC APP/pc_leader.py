@@ -210,9 +210,9 @@ app = Flask(__name__)
 def serve_ui():
     return send_from_directory(".", "index.html")
 
-@app.route("/modules/discovery/discovery_panel.html")
+@app.route("/plugins/wifi/discovery_panel.html")
 def serve_discovery_panel():
-    return send_from_directory("modules/discovery", "discovery_panel.html")
+    return send_from_directory("plugins/wifi", "discovery_panel.html")
 
 # ── /api/status ───────────────────────────────────────────────────
 @app.route("/api/status")
@@ -491,6 +491,16 @@ def api_seq_stop():
 def api_seq_status():
     with seq_lock:
         return jsonify({"running": seq_state["running"]})
+
+# ── /api/rainbow ─────────────────────────────────────────────────
+@app.route("/api/rainbow", methods=["POST"])
+def api_rainbow():
+    data = request.get_json() or {}
+    on   = bool(data.get("on", False))
+    cmd  = "RAINBOW:1" if on else "RAINBOW:0"
+    udp_broadcast(cmd)
+    print(f"[Rainbow] Global {'ON' if on else 'OFF'} — sent to all peers")
+    return jsonify({"status": "ok"})
 
 # ── Stub endpoints (for UI compatibility) ─────────────────────────
 @app.route("/api/ports")

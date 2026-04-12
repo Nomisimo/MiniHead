@@ -11,9 +11,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nano Moving Light</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
-<!-- Future external module example:
-  <script src="my_module.js"></script>
--->
 <style>
   :root {
     --bg:#0a0a0f;--surface:#13131a;--surface2:#1c1c26;
@@ -49,7 +46,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .panel-title{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
 
   /* ── MAIN GRID ── */
-  /* Mobile: single column */
   .main{
     display:grid;
     grid-template-columns:1fr;
@@ -64,8 +60,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     gap:1px;
     background:var(--border);
   }
-
-  /* Desktop: 2/3 left | 1/3 right */
   @media(min-width:900px){
     .main{
       grid-template-columns:2fr 1fr;
@@ -211,9 +205,9 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
   </div>
 
-  <!-- Network Heads Module (loaded from discovery module) -->
+  <!-- Network Heads Plugin -->
   <div class="panel area-future" id="module-container">
-    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading module...</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
   </div>
 
   <!-- ── RIGHT 1/3 ── -->
@@ -261,9 +255,9 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     </div>
   </div>
 
-  <!-- Rainbow -->
+  <!-- Rainbow — broadcasts to ALL heads -->
   <div class="panel area-rainbow col-right">
-    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW TEST</button>
+    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
   </div>
 
   <!-- Serial -->
@@ -305,7 +299,13 @@ function onMotion(){var v=getValues();document.getElementById('vPan').value=v.pa
 function debounceSend(){clearTimeout(sendTimer);sendTimer=setTimeout(sendCurrent,40);}
 function sendCurrent(){var v=getValues();var cmd='R:'+v.r+',G:'+v.g+',B:'+v.b+',W:'+v.w+',PAN:'+v.pan+',TILT:'+v.tilt;var macs=(typeof nh_getSelectedMACs==='function')?nh_getSelectedMACs():[];if(macs.length){fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd,targets:macs})});}else{sendCommand(cmd);}}
 function sendCommand(cmd){fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});}
-function toggleRainbow(){rainbowActive=!rainbowActive;document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);sendCommand('RAINBOW:'+(rainbowActive?1:0));toast(rainbowActive?'Rainbow on':'Rainbow off');}
+function toggleRainbow(){
+  rainbowActive=!rainbowActive;
+  document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);
+  // POST to /api/rainbow — leader applies locally + broadcasts to all followers
+  fetch('/api/rainbow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:rainbowActive})});
+  toast(rainbowActive?'Rainbow ON \u2014 all heads':'Rainbow OFF');
+}
 function loadCues(){fetch('/api/cues').then(function(r){return r.json();}).then(renderCues);}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function renderCues(cues){var list=document.getElementById('cueList');if(!cues.length){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">No cues saved yet</div>';return;}list.innerHTML='';cues.forEach(function(cue){var inSeq=seqSelectedIds.indexOf(cue.id)>=0,wr=Math.min(255,cue.r+cue.w),wg=Math.min(255,cue.g+cue.w),wb=Math.min(255,cue.b+cue.w),el=document.createElement('div');el.className='cue-item'+(inSeq?' seq-selected':'');var ftStr=(cue.fixTargets&&cue.fixTargets.length)?' <span style="color:var(--accent3)">\u2192 '+(cue.fixTargets.map(function(id){return id===0?'ALL':'#'+id;}).join(' '))+'</span>':'';el.innerHTML='<div class="cue-swatch" style="background:rgb('+wr+','+wg+','+wb+')"></div><div class="cue-info"><div class="cue-name">'+escHtml(cue.name)+'</div><div class="cue-meta">P:'+cue.pan+'deg T:'+cue.tilt+'deg W:'+cue.w+ftStr+'</div></div><div class="cue-actions"><button class="icon-btn" title="Edit targets" onclick="editCue('+cue.id+','+JSON.stringify(cue.fixTargets||[0])+')">&#9998;</button><button class="icon-btn" onclick="toggleSeqCue('+cue.id+')">+</button><button class="icon-btn" onclick="fireCue('+cue.id+')">GO</button><button class="icon-btn del" onclick="deleteCue('+cue.id+')">X</button></div>';list.appendChild(el);});}
@@ -321,26 +321,21 @@ function cueEditSave(){if(!_editCueId)return;var ft=[];if(document.getElementByI
 function sendRaw(){var cmd=document.getElementById('cmdInput').value.trim();if(!cmd)return;sendCommand(cmd);toast('Sent: '+cmd);}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
 updatePreview();loadCues();
-// Load discovery panel — re-create script tags so they execute
+// Load network heads plugin
 function loadModule(url, id) {
-  fetch(url)
-    .then(function(r){return r.text();})
-    .then(function(html){
-      var el=document.getElementById(id);
-      if(!el) return;
-      el.innerHTML=html;
-      el.querySelectorAll('script').forEach(function(old){
-        var s=document.createElement('script');
-        s.textContent=old.textContent;
-        old.parentNode.replaceChild(s,old);
-      });
-    })
-    .catch(function(){
-      var el=document.getElementById(id);
-      if(el) el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">// Discovery module not available</div>';
+  fetch(url).then(function(r){return r.text();}).then(function(html){
+    var el=document.getElementById(id);if(!el)return;
+    el.innerHTML=html;
+    el.querySelectorAll('script').forEach(function(old){
+      var s=document.createElement('script');s.textContent=old.textContent;
+      old.parentNode.replaceChild(s,old);
     });
+  }).catch(function(){
+    var el=document.getElementById(id);
+    if(el)el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">// Network heads plugin not available</div>';
+  });
 }
-loadModule('/modules/discovery/discovery_panel.html','module-container');
+loadModule('/plugins/wifi/discovery_panel.html','module-container');
 </script>
 </body>
 </html>

@@ -1,14 +1,13 @@
 #pragma once
 
-// ── UDP Control Module ────────────────────────────────────────────
+// ── UDP Control Plugin ────────────────────────────────────────────
 // Follower: listens on port 4211 for CMD / IDENTIFY packets
 // Leader:   sends CMD / IDENTIFY packets to follower IPs
-// Depends on: core.h (setLED, applyCommand), discovery.h (peer types)
-// NOTE: discovery.h must be included before this file (done in config.h)
+// Depends on: core.h (setLED, applyCommand), discovery_globals.h
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFiUdp.h>
-#include "../discovery/discovery_globals.h"
+#include "discovery_globals.h"
 
 static WiFiUDP _cmdUDP;
 
@@ -121,7 +120,7 @@ void udp_handlePacket(const char* data, int len) {
   }
 }
 
-// ── Module lifecycle ──────────────────────────────────────────────
+// ── Plugin lifecycle ──────────────────────────────────────────────
 
 void udp_control_setup() {
   _cmdUDP.begin(CMD_PORT);
@@ -144,3 +143,5 @@ void udp_control_loop() {
     setLED(curR, curG, curB, curW);
   }
 }
+
+REGISTER_PLUGIN(udp_control);

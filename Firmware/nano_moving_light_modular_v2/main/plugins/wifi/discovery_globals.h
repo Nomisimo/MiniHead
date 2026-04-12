@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-// ── Types & constants shared across all modules ───────────────────
+// ── Types & constants shared across wifi plugin ───────────────────
 
 enum NodeRole { ROLE_UNDECIDED, ROLE_LEADER, ROLE_FOLLOWER };
 
@@ -23,7 +23,7 @@ struct Peer {
   bool active;
 };
 
-// Globals defined in discovery.h, declared here for other modules
+// Globals defined in discovery.h, declared here for other files
 extern NodeRole nodeRole;
 extern char     ownMAC[18];
 extern char     ownIP[16];

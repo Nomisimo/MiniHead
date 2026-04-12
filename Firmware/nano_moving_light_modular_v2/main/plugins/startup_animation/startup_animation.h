@@ -1,6 +1,6 @@
 #pragma once
 
-// ── Startup Animation Module ──────────────────────────────────────
+// ── Startup Animation Plugin ──────────────────────────────────────
 // Runs once on boot: servo bounce + RGB color sweep
 // Depends on: core.h (setLED, setPan, setTilt)
 // ─────────────────────────────────────────────────────────────────
@@ -31,3 +31,5 @@ void startup_animation_setup() {
 void startup_animation_loop() {
   // nothing — runs once in setup only
 }
+
+REGISTER_PLUGIN(startup_animation);

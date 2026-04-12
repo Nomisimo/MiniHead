@@ -1,7 +1,7 @@
 #pragma once
 
 // ── Discovery Panel HTML Fragment ────────────────────────────────
-// Served at GET /modules/discovery/discovery_panel.html
+// Served at GET /plugins/wifi/discovery_panel.html
 // Injected into the Future Module Slot by the main page JS
 // ─────────────────────────────────────────────────────────────────
 
@@ -170,11 +170,9 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
     var id=parseInt(val)||0;
     fetch('/api/heads/'+mac+'/fixid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:id})}).then(function(){headsData.forEach(function(h){if(h.mac===mac)h.fixID=id;});nh_render();if(typeof toast==='function')toast('Fix#'+id+' saved');});
   };
-
   window.nh_setName=function(mac,name){
     fetch('/api/heads/'+mac+'/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(){headsData.forEach(function(h){if(h.mac===mac)h.name=name;});if(typeof toast==='function')toast('Name saved');});
   };
-
   window.nh_renameFixture=function(id,name){
     fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(){fixturePool.forEach(function(f){if(f.id===id)f.name=name;});if(typeof toast==='function')toast('Fixture renamed');});
   };

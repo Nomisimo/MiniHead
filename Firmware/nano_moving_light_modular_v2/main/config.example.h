@@ -1,6 +1,6 @@
 // ── Plugin Config ─────────────────────────────────────────────────
-// This is the only file you need to edit to add/remove plugins.
-// main.ino iterates _plugins[] — it never needs to be changed.
+// Copy this file to config.h and fill in your credentials.
+// config.h is gitignored — never commit it.
 // ─────────────────────────────────────────────────────────────────
 
 #pragma once
@@ -8,9 +8,9 @@
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
 
-// ── WiFi credentials ──────────────────────────────────────────────
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// ── WiFi credentials — CHANGE THESE ──────────────────────────────
+#define WIFI_SSID     "YourNetworkName"
+#define WIFI_PASSWORD "YourPassword"
 
 // ── Plugins ───────────────────────────────────────────────────────
 // To disable a plugin: comment out its #include line.

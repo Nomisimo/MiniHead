@@ -112,37 +112,29 @@ bool discovery_leaderAlive() {
 // Tiebreaker or all-unassigned: lowest MAC string (RDM-style).
 
 void discovery_elect() {
-  // Collect candidates: self + active peers
-  struct Candidate { char mac[18]; int fixID; };
+  // Winner = lowest MAC string (RDM-style).
+  // PC always wins because its fake MAC "00:00:00:00:00:PC" is lexicographically
+  // smaller than any real ESP32 MAC.
+  struct Candidate { char mac[18]; };
   Candidate candidates[MAX_PEERS + 1];
   int n = 0;
 
   // Self
   strncpy(candidates[n].mac, ownMAC, 17);
   candidates[n].mac[17] = 0;
-  candidates[n].fixID = ownFixID;
   n++;
 
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active) continue;
     strncpy(candidates[n].mac, peers[i].mac, 17);
     candidates[n].mac[17] = 0;
-    candidates[n].fixID = peers[i].fixID;
     n++;
   }
 
-  // Find winner
+  // Find winner: lowest MAC
   int winIdx = 0;
   for (int i = 1; i < n; i++) {
-    bool curHasID  = candidates[winIdx].fixID > 0;
-    bool candHasID = candidates[i].fixID > 0;
-    if (curHasID && candHasID) {
-      if (candidates[i].fixID < candidates[winIdx].fixID) winIdx = i;
-    } else if (!curHasID && candHasID) {
-      winIdx = i; // prefer assigned
-    } else if (!curHasID && !candHasID) {
-      if (strcmp(candidates[i].mac, candidates[winIdx].mac) < 0) winIdx = i;
-    }
+    if (strcmp(candidates[i].mac, candidates[winIdx].mac) < 0) winIdx = i;
   }
 
   bool iAmLeader = (strcmp(candidates[winIdx].mac, ownMAC) == 0);

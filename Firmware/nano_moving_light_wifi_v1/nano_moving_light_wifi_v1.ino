@@ -29,8 +29,8 @@
 #include "html_page.h"        // HTML UI lives in this separate file
 
 // ── !! CHANGE THESE !! ────────────────────────────────────────────
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "TP-LINK_4A2CEC";
+const char* WIFI_PASSWORD = "98764013";
 // ─────────────────────────────────────────────────────────────────
 
 #define LED_PIN        8

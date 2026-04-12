@@ -78,6 +78,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 
   function nh_render(){
     var tbody=document.getElementById('nh_tbody');
+    var active=document.activeElement;if(active&&tbody&&tbody.contains(active))return;
     tbody.innerHTML='';
     if(!headsData||!headsData.length){
       tbody.innerHTML='<tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td></tr>';

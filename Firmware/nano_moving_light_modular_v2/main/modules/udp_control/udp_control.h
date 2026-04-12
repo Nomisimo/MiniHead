@@ -43,6 +43,14 @@ void udp_sendIdentifyOff(const char* ip, const char* targetMAC) {
   _cmdUDP.endPacket();
 }
 
+void udp_sendSetName(const char* ip, const char* targetMAC, const char* name) {
+  char pkt[96];
+  snprintf(pkt, sizeof(pkt), "CMD|%s|SETNAME:%s", targetMAC, name);
+  _cmdUDP.beginPacket(ip, CMD_PORT);
+  _cmdUDP.print(pkt);
+  _cmdUDP.endPacket();
+}
+
 // ── Broadcast to all active peers ────────────────────────────────
 
 void udp_broadcastCommand(const char* command) {
@@ -99,6 +107,11 @@ void udp_handlePacket(const char* data, int len) {
         int newID = atoi(cmd + 9);
         discovery_saveFixID(newID);
         Serial.printf("[UDP] FixID set to %d\n", newID);
+        return;
+      }
+      if (strncmp(cmd, "SETNAME:", 8) == 0) {
+        discovery_saveName(cmd + 8);
+        Serial.printf("[UDP] Name set to \"%s\"\n", ownName);
         return;
       }
       Serial.printf("[UDP] CMD for us: %s\n", cmd);

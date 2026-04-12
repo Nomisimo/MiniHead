@@ -139,6 +139,15 @@
   /* ── Serial ── */
   .serial-row{display:flex;gap:8px;}
 
+  /* ── Cue Edit Modal ── */
+  #cueEditModal{position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:600;display:none;align-items:center;justify-content:center;}
+  #cueEditModal.open{display:flex;}
+  .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:20px;min-width:260px;max-width:380px;width:90%;max-height:80vh;overflow-y:auto;}
+  .modal-title{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+  .modal-check-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-family:var(--mono);font-size:11px;cursor:pointer;}
+  .modal-check-row input{accent-color:var(--accent3);width:15px;height:15px;flex-shrink:0;}
+  .modal-footer{display:flex;gap:8px;margin-top:14px;}
+
   /* ── Toast ── */
   #toast{position:fixed;bottom:16px;right:16px;left:16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 18px;font-family:var(--mono);font-size:12px;border-radius:4px;opacity:0;transition:opacity 0.2s;z-index:999;pointer-events:none;text-align:center;}
   #toast.show{opacity:1;}
@@ -262,8 +271,25 @@
 
 </div>
 <div id="toast"></div>
+
+<!-- ── Cue Edit Modal ── -->
+<div id="cueEditModal">
+  <div class="modal-box">
+    <div class="modal-title">// Edit Targets</div>
+    <div id="cueEditList"></div>
+    <div style="margin-top:10px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
+      <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 8px;font-family:var(--mono);font-size:12px;border-radius:4px;outline:none;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn primary" onclick="cueEditSave()">SAVE</button>
+      <button class="btn" onclick="cueEditClose()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
 <script>
-var rainbowActive=false,seqSelectedIds=[],sendTimer=null;
+var rainbowActive=false,seqSelectedIds=[],sendTimer=null,_editCueId=null;
 fetch('/api/status').then(function(r){return r.json();}).then(function(d){if(d.ip)document.getElementById('ipLabel').textContent=d.ip;});
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
@@ -276,13 +302,16 @@ function sendCommand(cmd){fetch('/api/send',{method:'POST',headers:{'Content-Typ
 function toggleRainbow(){rainbowActive=!rainbowActive;document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);sendCommand('RAINBOW:'+(rainbowActive?1:0));toast(rainbowActive?'Rainbow on':'Rainbow off');}
 function loadCues(){fetch('/api/cues').then(function(r){return r.json();}).then(renderCues);}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function renderCues(cues){var list=document.getElementById('cueList');if(!cues.length){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">No cues saved yet</div>';return;}list.innerHTML='';cues.forEach(function(cue){var inSeq=seqSelectedIds.indexOf(cue.id)>=0,wr=Math.min(255,cue.r+cue.w),wg=Math.min(255,cue.g+cue.w),wb=Math.min(255,cue.b+cue.w),el=document.createElement('div');el.className='cue-item'+(inSeq?' seq-selected':'');var ftStr=(cue.fixTargets&&cue.fixTargets.length)?' <span style="color:var(--accent3)">→ '+(cue.fixTargets.map(function(id){return id===0?'ALL':'#'+id;}).join(' '))+'</span>':'';el.innerHTML='<div class="cue-swatch" style="background:rgb('+wr+','+wg+','+wb+')"></div><div class="cue-info"><div class="cue-name">'+escHtml(cue.name)+'</div><div class="cue-meta">P:'+cue.pan+'deg T:'+cue.tilt+'deg W:'+cue.w+ftStr+'</div></div><div class="cue-actions"><button class="icon-btn" onclick="toggleSeqCue('+cue.id+')">+</button><button class="icon-btn" onclick="fireCue('+cue.id+')">GO</button><button class="icon-btn del" onclick="deleteCue('+cue.id+')">X</button></div>';list.appendChild(el);});}
+function renderCues(cues){var list=document.getElementById('cueList');if(!cues.length){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">No cues saved yet</div>';return;}list.innerHTML='';cues.forEach(function(cue){var inSeq=seqSelectedIds.indexOf(cue.id)>=0,wr=Math.min(255,cue.r+cue.w),wg=Math.min(255,cue.g+cue.w),wb=Math.min(255,cue.b+cue.w),el=document.createElement('div');el.className='cue-item'+(inSeq?' seq-selected':'');var ftStr=(cue.fixTargets&&cue.fixTargets.length)?' <span style="color:var(--accent3)">\u2192 '+(cue.fixTargets.map(function(id){return id===0?'ALL':'#'+id;}).join(' '))+'</span>':'';el.innerHTML='<div class="cue-swatch" style="background:rgb('+wr+','+wg+','+wb+')"></div><div class="cue-info"><div class="cue-name">'+escHtml(cue.name)+'</div><div class="cue-meta">P:'+cue.pan+'deg T:'+cue.tilt+'deg W:'+cue.w+ftStr+'</div></div><div class="cue-actions"><button class="icon-btn" title="Edit targets" onclick="editCue('+cue.id+','+JSON.stringify(cue.fixTargets||[0])+')">&#9998;</button><button class="icon-btn" onclick="toggleSeqCue('+cue.id+')">+</button><button class="icon-btn" onclick="fireCue('+cue.id+')">GO</button><button class="icon-btn del" onclick="deleteCue('+cue.id+')">X</button></div>';list.appendChild(el);});}
 function saveCue(){var name=document.getElementById('cueName').value.trim();if(!name){toast('Enter a cue name','err');return;}var v=getValues();var ft=(typeof nh_getSelectedFixIDs==='function')?nh_getSelectedFixIDs():[];if(!ft.length)ft=[0];fetch('/api/cues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,r:v.r,g:v.g,b:v.b,w:v.w,pan:v.pan,tilt:v.tilt,fixTargets:ft})}).then(function(){document.getElementById('cueName').value='';toast('Cue saved');loadCues();});}
 function fireCue(id){fetch('/api/cues/'+id+'/fire',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d.status==='ok'){toast('Cue fired');fetch('/api/cues').then(function(r){return r.json();}).then(function(cues){var cue=cues.find(function(c){return c.id===id;});if(cue){document.getElementById('fR').value=cue.r;document.getElementById('fG').value=cue.g;document.getElementById('fB').value=cue.b;document.getElementById('fW').value=cue.w;document.getElementById('fPan').value=cue.pan;document.getElementById('fTilt').value=cue.tilt;onFader();onMotion();}});}});}
 function deleteCue(id){seqSelectedIds=seqSelectedIds.filter(function(i){return i!==id;});fetch('/api/cues/'+id,{method:'DELETE'}).then(function(){toast('Cue deleted');loadCues();});}
 function toggleSeqCue(id){var idx=seqSelectedIds.indexOf(id);if(idx>=0)seqSelectedIds.splice(idx,1);else seqSelectedIds.push(id);loadCues();document.getElementById('seqStatus').textContent=seqSelectedIds.length+' cue(s) in sequence';}
 function startSequencer(){if(!seqSelectedIds.length){toast('Select cues first','err');return;}var interval=+document.getElementById('seqInterval').value,loop=document.getElementById('seqLoop').checked;fetch('/api/sequencer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue_ids:seqSelectedIds,interval_ms:interval,loop:loop})}).then(function(){document.getElementById('seqStatus').textContent='Running - '+seqSelectedIds.length+' cues';document.getElementById('seqStartBtn').classList.add('active');toast('Sequencer started');});}
 function stopSequencer(){fetch('/api/sequencer/stop',{method:'POST'}).then(function(){document.getElementById('seqStatus').textContent='Sequencer idle';document.getElementById('seqStartBtn').classList.remove('active');toast('Sequencer stopped');});}
+function editCue(id,curTargets){_editCueId=id;fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}).then(function(fixtures){var list=document.getElementById('cueEditList');var html='<label class="modal-check-row"><input type="checkbox" id="cue_all" '+(curTargets.indexOf(0)>=0?'checked':'')+'><span style="color:var(--accent)">ALL (broadcast to everyone)</span></label>';fixtures.forEach(function(f){if(f.id<=0)return;var chk=curTargets.indexOf(f.id)>=0;html+='<label class="modal-check-row"><input type="checkbox" class="cue-fix-cb" value="'+f.id+'" '+(chk?'checked':'')+'>'+f.id+' — '+escHtml(f.name||'?')+(f.online?' <span style="color:var(--success);font-size:9px">&#9679;</span>':' <span style="color:var(--text-dim);font-size:9px">&#9675;</span>')+'</label>';});list.innerHTML=html;var poolIds=fixtures.map(function(f){return f.id;});var free=curTargets.filter(function(id){return id>0&&poolIds.indexOf(id)<0;});document.getElementById('cueEditFree').value=free.join(', ');document.getElementById('cueEditModal').classList.add('open');});}
+function cueEditClose(){document.getElementById('cueEditModal').classList.remove('open');_editCueId=null;}
+function cueEditSave(){if(!_editCueId)return;var ft=[];if(document.getElementById('cue_all').checked){ft=[0];}else{document.querySelectorAll('.cue-fix-cb:checked').forEach(function(cb){ft.push(parseInt(cb.value));});var freeVal=document.getElementById('cueEditFree').value;freeVal.split(',').forEach(function(s){var n=parseInt(s.trim());if(n>0&&ft.indexOf(n)<0)ft.push(n);});}if(!ft.length)ft=[0];fetch('/api/cues/'+_editCueId+'/targets',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixTargets:ft})}).then(function(){cueEditClose();toast('Targets updated');loadCues();});}
 function sendRaw(){var cmd=document.getElementById('cmdInput').value.trim();if(!cmd)return;sendCommand(cmd);toast('Sent: '+cmd);}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
 updatePreview();loadCues();

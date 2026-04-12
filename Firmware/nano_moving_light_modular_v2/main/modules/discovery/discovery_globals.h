@@ -16,6 +16,7 @@ enum NodeRole { ROLE_UNDECIDED, ROLE_LEADER, ROLE_FOLLOWER };
 struct Peer {
   char mac[18];
   char ip[16];
+  char name[32];
   int  fixID;
   NodeRole role;
   unsigned long lastSeen;
@@ -27,8 +28,10 @@ extern NodeRole nodeRole;
 extern char     ownMAC[18];
 extern char     ownIP[16];
 extern int      ownFixID;
+extern char     ownName[32];
 extern Peer     peers[MAX_PEERS];
 extern int      peerCount;
 
 // Defined in discovery.h
 extern void discovery_saveFixID(int id);
+extern void discovery_saveName(const char* name);

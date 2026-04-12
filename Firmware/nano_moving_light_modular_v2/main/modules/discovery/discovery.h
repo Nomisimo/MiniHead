@@ -17,6 +17,7 @@ NodeRole nodeRole   = ROLE_UNDECIDED;
 char ownMAC[18]     = "";
 char ownIP[16]      = "";
 int  ownFixID       = 0;
+char ownName[32]    = "";
 Peer peers[MAX_PEERS];
 int  peerCount      = 0;
 
@@ -46,6 +47,21 @@ void discovery_saveFixID(int id) {
   p.end();
 }
 
+void discovery_loadName() {
+  Preferences p;
+  p.begin("discovery", true);
+  strlcpy(ownName, p.getString("name", "").c_str(), sizeof(ownName));
+  p.end();
+}
+
+void discovery_saveName(const char* name) {
+  strlcpy(ownName, name, sizeof(ownName));
+  Preferences p;
+  p.begin("discovery", false);
+  p.putString("name", ownName);
+  p.end();
+}
+
 // ── Peer helpers ──────────────────────────────────────────────────
 
 Peer* discovery_findPeer(const char* mac) {
@@ -54,14 +70,16 @@ Peer* discovery_findPeer(const char* mac) {
   return nullptr;
 }
 
-Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role) {
+Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "") {
   Peer* p = discovery_findPeer(mac);
   if (!p) {
     if (peerCount >= MAX_PEERS) return nullptr;
     p = &peers[peerCount++];
     strncpy(p->mac, mac, 17); p->mac[17] = 0;
+    p->name[0] = 0;
   }
   strncpy(p->ip, ip, 15); p->ip[15] = 0;
+  if (name && name[0]) strlcpy(p->name, name, sizeof(p->name));
   p->fixID    = fixID;
   p->role     = role;
   p->lastSeen = millis();
@@ -149,39 +167,40 @@ void discovery_elect() {
 // ── Beacon ────────────────────────────────────────────────────────
 
 void discovery_sendBeacon() {
-  // Format: MINIHEAD|<MAC>|<IP>|<FixID>|<ROLE>
-  char pkt[96];
+  // Format: MINIHEAD|<MAC>|<IP>|<FixID>|<ROLE>|<NAME>
+  char pkt[160];
   const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
-  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s", ownMAC, ownIP, ownFixID, roleStr);
+  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName);
   _beaconUDP.beginPacket(IPAddress(255,255,255,255), BEACON_PORT);
   _beaconUDP.print(pkt);
   _beaconUDP.endPacket();
 }
 
 void discovery_parseBeacon(const char* data, int len) {
-  // MINIHEAD|MAC|IP|FixID|ROLE
-  char buf[128];
+  // MINIHEAD|MAC|IP|FixID|ROLE|NAME  (NAME field optional — backwards compat)
+  char buf[192];
   if (len >= (int)sizeof(buf)) return;
   memcpy(buf, data, len); buf[len] = 0;
 
   if (strncmp(buf, "MINIHEAD|", 9) != 0) return;
 
-  char* fields[4];
+  char* fields[6];
   int   fi = 0;
   char* tok = strtok(buf + 9, "|");
-  while (tok && fi < 4) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
+  while (tok && fi < 6) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
   if (fi < 4) return;
 
   const char* mac   = fields[0];
   const char* ip    = fields[1];
   int         fixID = atoi(fields[2]);
   NodeRole    role  = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
+  const char* name  = (fi >= 6) ? fields[5] : "";
 
   // Ignore own beacon
   if (strcmp(mac, ownMAC) == 0) return;
 
-  discovery_addOrUpdate(mac, ip, fixID, role);
-  Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s\n", mac, ip, fixID, fields[3]);
+  discovery_addOrUpdate(mac, ip, fixID, role, name);
+  Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n", mac, ip, fixID, fields[3], name);
 
   // If we are LEADER and heard another LEADER, re-elect immediately
   // (step-down is beacon-driven, not timer-driven)
@@ -194,6 +213,7 @@ void discovery_parseBeacon(const char* data, int len) {
 
 void discovery_setup() {
   discovery_loadFixID();
+  discovery_loadName();
 
   // Get MAC
   uint8_t mac[6]; WiFi.macAddress(mac);

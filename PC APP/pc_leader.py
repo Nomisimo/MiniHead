@@ -29,6 +29,7 @@ BEACON_INTERVAL = 1.0       # seconds
 PEER_TIMEOUT    = 12.0      # seconds before peer is removed (ESP32 beacons every 2s)
 OWN_FIX_ID      = 0         # set your fixture ID here
 CUES_FILE       = "pc_cues.json"
+FIXTURES_FILE   = "pc_fixtures.json"
 
 # ── Own identity ──────────────────────────────────────────────────
 def get_own_mac():
@@ -51,20 +52,25 @@ OWN_ROLE = "LEADER"
 
 # ── Peer table ────────────────────────────────────────────────────
 peers_lock = threading.Lock()
-peers = {}  # mac -> {mac, ip, fixID, role, lastSeen}
+peers = {}  # mac -> {mac, ip, fixID, name, role, lastSeen}
 
-def update_peer(mac, ip, fix_id, role):
+def update_peer(mac, ip, fix_id, role, name=""):
     with peers_lock:
         is_new = mac not in peers
         peers[mac] = {
-            "mac":     mac,
-            "ip":      ip,
-            "fixID":   fix_id,
-            "role":    "LEADER" if role in ("LEADER", "1") else "FOLLOWER",
+            "mac":      mac,
+            "ip":       ip,
+            "fixID":    int(fix_id) if str(fix_id).isdigit() else 0,
+            "name":     name,
+            "role":     "LEADER" if role in ("LEADER", "1") else "FOLLOWER",
             "lastSeen": time.time()
         }
         if is_new:
-            print(f"[Discovery] Peer joined: {mac}  IP:{ip}  Fix#{fix_id}  {role}")
+            print(f"[Discovery] Peer joined: {mac}  IP:{ip}  Fix#{fix_id}  \"{name}\"  {role}")
+    # Auto-register in fixture pool if fixID assigned
+    fid = int(fix_id) if str(fix_id).isdigit() else 0
+    if fid > 0:
+        _fixture_auto_register(fid, name, mac)
 
 def expire_peers():
     now = time.time()
@@ -77,6 +83,49 @@ def expire_peers():
 def get_peers():
     with peers_lock:
         return list(peers.values())
+
+# ── Fixture pool ──────────────────────────────────────────────────
+fixtures_lock = threading.Lock()
+fixtures = {}  # id(int) -> {id, name, mac}
+
+def load_fixtures():
+    global fixtures
+    if os.path.exists(FIXTURES_FILE):
+        with open(FIXTURES_FILE) as f:
+            data = json.load(f)
+        fixtures = {int(fx["id"]): fx for fx in data}
+        print(f"[Fixtures] Loaded {len(fixtures)} fixtures")
+
+def save_fixtures():
+    with open(FIXTURES_FILE, "w") as f:
+        json.dump(list(fixtures.values()), f, indent=2)
+
+def _fixture_auto_register(fid, name, mac):
+    """Called when a peer beacons in with a fixID — keeps pool in sync."""
+    with fixtures_lock:
+        if fid not in fixtures:
+            fixtures[fid] = {"id": fid, "name": name, "mac": mac}
+            save_fixtures()
+        else:
+            changed = False
+            if not fixtures[fid].get("mac") and mac:
+                fixtures[fid]["mac"] = mac; changed = True
+            if name and not fixtures[fid].get("name"):
+                fixtures[fid]["name"] = name; changed = True
+            if changed:
+                save_fixtures()
+
+def get_fixtures_with_status():
+    peer_list = get_peers()
+    by_mac   = {p["mac"]: p for p in peer_list}
+    by_fixid = {p["fixID"]: p for p in peer_list if p.get("fixID", 0) > 0}
+    result = []
+    with fixtures_lock:
+        for fid, fx in sorted(fixtures.items()):
+            p = by_mac.get(fx.get("mac", "")) or by_fixid.get(fid)
+            online = p is not None
+            result.append({**fx, "online": online, "ip": p["ip"] if online else None})
+    return result
 
 # ── Cue storage ───────────────────────────────────────────────────
 cues_lock = threading.Lock()
@@ -98,7 +147,7 @@ def beacon_sender():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     while True:
-        pkt = f"MINIHEAD|{OWN_MAC}|{OWN_IP}|{OWN_FIX_ID}|LEADER"
+        pkt = f"MINIHEAD|{OWN_MAC}|{OWN_IP}|{OWN_FIX_ID}|LEADER|PC"
         try:
             sock.sendto(pkt.encode(), ("<broadcast>", BEACON_PORT))
         except Exception as e:
@@ -122,9 +171,10 @@ def beacon_receiver():
             if len(parts) < 5:
                 continue
             _, mac, ip, fix_id, role = parts[:5]
+            name = parts[5] if len(parts) > 5 else ""
             if mac == OWN_MAC:
                 continue  # ignore own beacon
-            update_peer(mac, ip, fix_id, role)
+            update_peer(mac, ip, fix_id, role, name)
         except socket.timeout:
             pass
         except Exception as e:
@@ -173,11 +223,12 @@ def api_status():
 @app.route("/api/heads")
 def api_get_heads():
     result = [{
-        "mac":    OWN_MAC,
-        "ip":     OWN_IP,
-        "fixID":  OWN_FIX_ID,
-        "role":   "LEADER",
-        "self":   True
+        "mac":   OWN_MAC,
+        "ip":    OWN_IP,
+        "fixID": OWN_FIX_ID,
+        "name":  "PC",
+        "role":  "LEADER",
+        "self":  True
     }]
     for p in get_peers():
         result.append({**p, "self": False})
@@ -198,6 +249,67 @@ def api_set_fixid(mac):
             p["fixID"] = new_id
             return jsonify({"status": "ok", "fixID": new_id})
     return jsonify({"status": "error", "message": "Peer not found"}), 404
+
+@app.route("/api/heads/<mac>/name", methods=["POST"])
+def api_set_name(mac):
+    mac  = mac.upper()
+    name = (request.get_json() or {}).get("name", "")
+    with peers_lock:
+        if mac in peers:
+            peers[mac]["name"] = name
+    # Update fixture pool entry for this MAC
+    with fixtures_lock:
+        for fx in fixtures.values():
+            if fx.get("mac") == mac:
+                fx["name"] = name
+                break
+    save_fixtures()
+    # Forward name to the device via UDP
+    for p in get_peers():
+        if p["mac"] == mac:
+            udp_send(p["ip"], p["mac"], f"SETNAME:{name}")
+            break
+    return jsonify({"status": "ok"})
+
+@app.route("/api/fixtures")
+def api_get_fixtures():
+    return jsonify(get_fixtures_with_status())
+
+@app.route("/api/fixtures", methods=["POST"])
+def api_create_fixture():
+    data = request.get_json() or {}
+    fid  = int(data.get("id", 0))
+    if fid <= 0:
+        return jsonify({"status": "error", "message": "Invalid ID"}), 400
+    with fixtures_lock:
+        if fid in fixtures:
+            return jsonify({"status": "error", "message": "ID already exists"}), 409
+        fx = {"id": fid, "name": data.get("name", ""), "mac": data.get("mac") or None}
+        fixtures[fid] = fx
+    save_fixtures()
+    return jsonify({"status": "ok", "fixture": fx})
+
+@app.route("/api/fixtures/<int:fix_id>", methods=["PUT"])
+def api_update_fixture(fix_id):
+    data = request.get_json() or {}
+    with fixtures_lock:
+        if fix_id not in fixtures:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        if "name" in data:
+            fixtures[fix_id]["name"] = data["name"]
+        if "mac" in data:
+            fixtures[fix_id]["mac"] = data["mac"] or None
+    save_fixtures()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/fixtures/<int:fix_id>", methods=["DELETE"])
+def api_delete_fixture(fix_id):
+    with fixtures_lock:
+        if fix_id not in fixtures:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        del fixtures[fix_id]
+    save_fixtures()
+    return jsonify({"status": "ok"})
 
 @app.route("/api/heads/<mac>/identify", methods=["POST"])
 def api_identify(mac):
@@ -394,6 +506,7 @@ def api_disconnect(): return jsonify({"status": "ok"})
 # ── Main ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_cues()
+    load_fixtures()
 
     threading.Thread(target=beacon_sender,   daemon=True).start()
     threading.Thread(target=beacon_receiver, daemon=True).start()

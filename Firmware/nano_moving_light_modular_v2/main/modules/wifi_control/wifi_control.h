@@ -149,18 +149,71 @@ void handleSeqStatus()  { sendJson(200,String("{\"running\":"+(seqRunning?String
 // ── /api/heads — returns all known peers + self ──────────────────
 void handleGetHeads() {
   String json = "[";
-  // Self first
   json += "{\"mac\":\"" + String(ownMAC) + "\"" +
           ",\"ip\":\""  + String(ownIP)  + "\"" +
           ",\"fixID\":" + String(ownFixID) +
+          ",\"name\":\"" + String(ownName) + "\"" +
           ",\"role\":\"LEADER\",\"self\":true}";
   for (int i=0; i<peerCount; i++) {
     if (!peers[i].active) continue;
     json += ",{\"mac\":\"" + String(peers[i].mac) + "\"" +
             ",\"ip\":\""   + String(peers[i].ip)  + "\"" +
             ",\"fixID\":"  + String(peers[i].fixID) +
+            ",\"name\":\"" + String(peers[i].name) + "\"" +
             ",\"role\":\""  + (peers[i].role==ROLE_LEADER?"LEADER":"FOLLOWER") + "\"" +
             ",\"self\":false}";
+  }
+  json += "]";
+  sendJson(200, json);
+}
+
+// ── /api/heads/<mac>/name  POST {name:"Stage Left"} ──────────────
+void handleSetName() {
+  String path = server.uri();
+  String mac  = path.substring(String("/api/heads/").length());
+  mac = mac.substring(0, mac.lastIndexOf('/'));
+  mac.toUpperCase();
+
+  JsonDocument doc;
+  deserializeJson(doc, server.arg("plain"));
+  const char* name = doc["name"] | "";
+
+  if (mac == String(ownMAC)) {
+    discovery_saveName(name);
+    sendJson(200, "{\"status\":\"ok\"}");
+    return;
+  }
+  for (int i = 0; i < peerCount; i++) {
+    if (peers[i].active && String(peers[i].mac) == mac) {
+      udp_sendSetName(peers[i].ip, peers[i].mac, name);
+      strlcpy(peers[i].name, name, sizeof(peers[i].name));
+      sendJson(200, "{\"status\":\"ok\"}");
+      return;
+    }
+  }
+  sendJson(404, "{\"status\":\"error\",\"message\":\"Peer not found\"}");
+}
+
+// ── /api/fixtures — simple list for ESP (non-persistent) ─────────
+void handleGetFixtures() {
+  String json = "[";
+  bool first = true;
+  // Self (only if fixID > 0)
+  if (ownFixID > 0) {
+    json += "{\"id\":" + String(ownFixID) +
+            ",\"name\":\"" + String(ownName) + "\"" +
+            ",\"mac\":\"" + String(ownMAC) + "\"" +
+            ",\"online\":true,\"ip\":\"" + String(ownIP) + "\"}";
+    first = false;
+  }
+  for (int i = 0; i < peerCount; i++) {
+    if (!peers[i].active || peers[i].fixID <= 0) continue;
+    if (!first) json += ",";
+    json += "{\"id\":" + String(peers[i].fixID) +
+            ",\"name\":\"" + String(peers[i].name) + "\"" +
+            ",\"mac\":\"" + String(peers[i].mac) + "\"" +
+            ",\"online\":true,\"ip\":\"" + String(peers[i].ip) + "\"}";
+    first = false;
   }
   json += "]";
   sendJson(200, json);
@@ -375,11 +428,13 @@ void setupRoutes() {
   server.on("/api/sequencer/stop",   HTTP_POST, handleSeqStop);
   server.on("/api/sequencer/status", HTTP_GET,  handleSeqStatus);
   server.on("/api/heads",            HTTP_GET,  handleGetHeads);
+  server.on("/api/fixtures",         HTTP_GET,  handleGetFixtures);
   server.onNotFound([](){
     String path=server.uri();
     if (path.startsWith("/api/heads/")) {
       if (path.endsWith("/identify") && server.method()==HTTP_POST) { handleIdentify(); return; }
       if (path.endsWith("/fixid")    && server.method()==HTTP_POST) { handleSetFixID(); return; }
+      if (path.endsWith("/name")     && server.method()==HTTP_POST) { handleSetName();  return; }
     }
     if (path.startsWith("/api/cues/")) {
       if (path.endsWith("/fire")    && server.method()==HTTP_POST)   { handleFireCue(); return; }

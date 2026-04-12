@@ -1,11 +1,3 @@
-#pragma once
-
-// ── Discovery Panel HTML Fragment ────────────────────────────────
-// Served at GET /modules/discovery/discovery_panel.html
-// Injected into the Future Module Slot by the main page JS
-// ─────────────────────────────────────────────────────────────────
-
-const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 <style>
   .heads-toolbar{display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
   .heads-sel-info{font-family:var(--mono);font-size:10px;color:var(--text-dim);flex:1;min-width:0;}
@@ -239,4 +231,3 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 
 })(); // end IIFE — no global namespace pollution
 </script>
-)=====";

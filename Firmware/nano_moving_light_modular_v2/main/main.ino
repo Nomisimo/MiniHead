@@ -19,10 +19,23 @@ void setup() {
   // Connect WiFi first — before any plugin runs
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
-  delay(100);
+  delay(200);
 
-  Serial.printf("[WiFi] SSID: \"%s\"\n", WIFI_SSID);
-  Serial.print("[WiFi] Connecting");
+  // Scan to verify SSID is visible
+  Serial.println("[WiFi] Scanning...");
+  int n = WiFi.scanNetworks();
+  bool found = false;
+  for (int i = 0; i < n; i++) {
+    bool match = (WiFi.SSID(i) == String(WIFI_SSID));
+    Serial.printf("  [%d] \"%s\"  RSSI:%d  Ch:%d  Enc:%d%s\n",
+      i, WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i),
+      WiFi.encryptionType(i), match ? "  <<< TARGET" : "");
+    if (match) found = true;
+  }
+  if (!found) Serial.printf("[WiFi] WARNING: \"%s\" not found in scan!\n", WIFI_SSID);
+  WiFi.scanDelete();
+
+  Serial.printf("[WiFi] Connecting to \"%s\"\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long wifiStart = millis();
@@ -31,11 +44,9 @@ void setup() {
     Serial.print(".");
     if (millis() - wifiStart > 15000) {
       Serial.println("\n[WiFi] FAILED — status: " + String(WiFi.status()));
-      Serial.println("[WiFi] 0=idle 1=no SSID 2=scan done 3=connected");
-      Serial.println("[WiFi] 4=connect fail 5=conn lost 6=disconnected");
-      Serial.println("[WiFi] Check SSID/password and that router is 2.4GHz WPA2.");
-      Serial.println("[WiFi] Retrying in 5s...");
-      delay(5000);
+      Serial.println("[WiFi] Retrying...");
+      WiFi.disconnect(true);
+      delay(500);
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       wifiStart = millis();
     }

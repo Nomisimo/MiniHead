@@ -15,6 +15,7 @@
 #include "discovery_panel_html.h"
 #include "discovery_globals.h"
 #include "udp_control.h"
+#include "../artnet/artnet_panel_html.h"
 
 #define MAX_CUES         32
 #define MAX_TARGETS      16   // max FixID targets per cue
@@ -76,6 +77,9 @@ void sendJson(int code, const String& json) {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(code, "application/json", json);
 }
+
+// artnet_control.h needs server + sendJson — include here, not at top
+#include "../artnet/artnet_control.h"
 
 String fixTargetsToJson(const Cue& c) {
   String s = "[";
@@ -363,6 +367,14 @@ void handleSeqStart() {
 void setupRoutes() {
   server.on("/",                                           HTTP_GET,  handleRoot);
   server.on("/plugins/wifi/discovery_panel.html",          HTTP_GET,  handleDiscoveryPanel);
+  server.on("/plugins/artnet/panel.html",    HTTP_GET,  [](){
+    server.sendHeader("Cache-Control","no-cache");
+    server.send_P(200,"text/html", ARTNET_PANEL_HTML);
+  });
+  server.on("/api/artnet/status",      HTTP_GET,  handleArtnetStatus);
+  server.on("/api/artnet/patch",       HTTP_GET,  handleGetArtnetPatch);
+  server.on("/api/artnet/patch/bulk",  HTTP_POST, handleBulkArtnetPatch);
+  server.on("/api/artnet/patch",       HTTP_POST, handlePostArtnetPatch);
   server.on("/api/status",            HTTP_GET,  handleStatus);
   server.on("/api/ports",             HTTP_GET,  handlePorts);
   server.on("/api/connect",           HTTP_POST, handleConnect);
@@ -389,12 +401,15 @@ void setupRoutes() {
       if (path.endsWith("/targets") && server.method()==HTTP_PUT)  { handleUpdateCueTargets(); return; }
       if (server.method()==HTTP_DELETE) { handleDeleteCue(); return; }
     }
+    if (path.startsWith("/api/artnet/patch/") && server.method()==HTTP_DELETE)
+      { handleDeleteArtnetPatch(); return; }
     server.send(404,"text/plain","Not found");
   });
 }
 
 void wifi_control_setup() {
   loadCuesFromFlash();
+  artnet_control_setup();
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
   setupRoutes();
   server.begin();

@@ -119,6 +119,37 @@ void handlePostArtnetPatch() {
   sendJson(200, "{\"status\":\"ok\"}");
 }
 
+// PUT /api/artnet/patch/:fixID  — update universe / startAddr of existing patch
+void handleUpdateArtnetPatch() {
+  String path = server.uri();
+  int fixID = path.substring(path.lastIndexOf('/') + 1).toInt();
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain"))) {
+    sendJson(400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return;
+  }
+  int universe  = doc["universe"]  | -1;
+  int startAddr = doc["startAddr"] | -1;
+  // Find existing patch
+  for (int i = 0; i < artnetPatchCount; i++) {
+    if (artnetPatches[i].fixID == fixID) {
+      if (universe  >= 0) artnetPatches[i].universe  = (uint16_t)universe;
+      if (startAddr >= 1 && startAddr + DMX_FOOTPRINT - 1 <= DMX_CHANNELS)
+        artnetPatches[i].startAddr = (uint16_t)startAddr;
+      artnet_savePatches();
+      // Push to follower if applicable
+      for (int j = 0; j < peerCount; j++) {
+        if (peers[j].active && peers[j].fixID == fixID) {
+          artnet_pushPatchToFollower(peers[j].ip, peers[j].mac, fixID,
+                                     artnetPatches[i].universe, artnetPatches[i].startAddr);
+          break;
+        }
+      }
+      sendJson(200, "{\"status\":\"ok\"}"); return;
+    }
+  }
+  sendJson(404, "{\"status\":\"error\",\"message\":\"Patch not found\"}");
+}
+
 void handleDeleteArtnetPatch() {
   String path = server.uri();
   int fixID = path.substring(path.lastIndexOf('/') + 1).toInt();

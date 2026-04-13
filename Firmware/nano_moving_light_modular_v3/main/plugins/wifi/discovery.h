@@ -221,6 +221,19 @@ void discovery_loop() {
     }
   }
 
+  // Safety net: if we think we're LEADER but a peer with lower MAC is also
+  // broadcasting LEADER, yield immediately (handles missed beacon edge cases).
+  if (nodeRole == ROLE_LEADER) {
+    for (int i = 0; i < peerCount; i++) {
+      if (peers[i].active && peers[i].role == ROLE_LEADER &&
+          strcmp(peers[i].mac, ownMAC) < 0) {
+        Serial.printf("[Discovery] Better leader %s active — yielding\n", peers[i].mac);
+        discovery_elect();
+        break;
+      }
+    }
+  }
+
   unsigned long now = millis();
   if (now - _lastBeaconSent >= BEACON_INTERVAL_MS) {
     strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);

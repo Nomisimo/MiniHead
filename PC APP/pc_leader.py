@@ -414,6 +414,18 @@ def api_fire_cue(cue_id):
 
     return jsonify({"status": "ok", "command": "fired", "response": "OK"})
 
+@app.route("/api/cues/reorder", methods=["PUT"])
+def api_reorder_cues():
+    data  = request.get_json() or {}
+    order = [int(i) for i in data.get("order", [])]
+    with cues_lock:
+        by_id     = {c["id"]: c for c in cues}
+        reordered = [by_id[i] for i in order if i in by_id]
+        missing   = [c for c in cues if c["id"] not in set(order)]
+        cues[:]   = reordered + missing
+    save_cues()
+    return jsonify({"status": "ok"})
+
 @app.route("/api/cues/<int:cue_id>/targets", methods=["PUT"])
 def api_update_targets(cue_id):
     data = request.get_json()

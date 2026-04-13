@@ -1,20 +1,20 @@
 #pragma once
 
-// ── UDP Control Module ────────────────────────────────────────────
+// ── UDP Control Plugin ────────────────────────────────────────────
 // Follower: listens on port 4211 for CMD / IDENTIFY packets
 // Leader:   sends CMD / IDENTIFY packets to follower IPs
-// Depends on: core.h (setLED, applyCommand), discovery.h (peer types)
-// NOTE: discovery.h must be included before this file (done in config.h)
+// Depends on: core.h (setLED, applyCommand), discovery_globals.h
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFiUdp.h>
-#include "../discovery/discovery_globals.h"
+#include "discovery_globals.h"
 
 static WiFiUDP _cmdUDP;
 
 // ── Identify watchdog ─────────────────────────────────────────────
 static bool          _identifyActive  = false;
 static unsigned long _identifyLastMsg = 0;
+static uint8_t       _preIdentR=0, _preIdentG=0, _preIdentB=0, _preIdentW=0;
 #define IDENTIFY_TIMEOUT_MS 2000
 
 // ── Sender (called from leader / wifi_control handlers) ───────────
@@ -43,6 +43,14 @@ void udp_sendIdentifyOff(const char* ip, const char* targetMAC) {
   _cmdUDP.endPacket();
 }
 
+void udp_sendSetName(const char* ip, const char* targetMAC, const char* name) {
+  char pkt[96];
+  snprintf(pkt, sizeof(pkt), "CMD|%s|SETNAME:%s", targetMAC, name);
+  _cmdUDP.beginPacket(ip, CMD_PORT);
+  _cmdUDP.print(pkt);
+  _cmdUDP.endPacket();
+}
+
 // ── Broadcast to all active peers ────────────────────────────────
 
 void udp_broadcastCommand(const char* command) {
@@ -66,6 +74,7 @@ void udp_handlePacket(const char* data, int len) {
       if (!_identifyActive) {
         Serial.println("[UDP] IDENTIFY ON");
         _identifyActive = true;
+        _preIdentR = curR; _preIdentG = curG; _preIdentB = curB; _preIdentW = curW;
       }
       _identifyLastMsg = millis();
       setLED(255, 255, 255, 255);
@@ -79,7 +88,7 @@ void udp_handlePacket(const char* data, int len) {
     if (strcmp(mac, ownMAC) == 0 && _identifyActive) {
       Serial.println("[UDP] IDENTIFY OFF");
       _identifyActive = false;
-      setLED(curR, curG, curB, curW);
+      setLED(_preIdentR, _preIdentG, _preIdentB, _preIdentW);
     }
     return;
   }
@@ -101,6 +110,11 @@ void udp_handlePacket(const char* data, int len) {
         Serial.printf("[UDP] FixID set to %d\n", newID);
         return;
       }
+      if (strncmp(cmd, "SETNAME:", 8) == 0) {
+        discovery_saveName(cmd + 8);
+        Serial.printf("[UDP] Name set to \"%s\"\n", ownName);
+        return;
+      }
       Serial.printf("[UDP] CMD for us: %s\n", cmd);
       applyCommand(String(cmd));
     }
@@ -108,7 +122,7 @@ void udp_handlePacket(const char* data, int len) {
   }
 }
 
-// ── Module lifecycle ──────────────────────────────────────────────
+// ── Plugin lifecycle ──────────────────────────────────────────────
 
 void udp_control_setup() {
   _cmdUDP.begin(CMD_PORT);
@@ -128,6 +142,8 @@ void udp_control_loop() {
   if (_identifyActive && (millis() - _identifyLastMsg > IDENTIFY_TIMEOUT_MS)) {
     Serial.println("[UDP] Identify watchdog timeout — restoring LED");
     _identifyActive = false;
-    setLED(curR, curG, curB, curW);
+    setLED(_preIdentR, _preIdentG, _preIdentB, _preIdentW);
   }
 }
+
+REGISTER_PLUGIN(udp_control);

@@ -6,3 +6,6 @@
 
 #FreeCAD
 *.FCBak
+
+# Firmware credentials — copy config.example.h → config.h and fill in your own
+Firmware/nano_moving_light_modular_v2/main/config.h

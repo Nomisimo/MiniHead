@@ -15,7 +15,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   .an-num::-webkit-outer-spin-button,.an-num::-webkit-inner-spin-button{-webkit-appearance:none;}
   .an-uni-nav{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
   #an_grid{display:grid;grid-template-columns:repeat(32,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:12px;cursor:crosshair;}
-  .an-cell{aspect-ratio:1;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:filter 0.08s;font-size:6px;color:rgba(0,0,0,0.7);font-family:var(--mono);font-weight:700;line-height:1;}
+  .an-cell{aspect-ratio:1;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:filter 0.08s;font-size:9px;color:rgba(0,0,0,0.8);font-family:var(--mono);font-weight:700;line-height:1;user-select:none;}
   .an-cell:hover{filter:brightness(1.5);}
   .an-cell.an-pending{outline:2px solid var(--accent);outline-offset:-2px;}
   .an-patch-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;margin-top:4px;}
@@ -150,18 +150,20 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     var fix_map={};
     an_fixtures.forEach(function(f){fix_map[f.id]=f.name||('Fix#'+f.id);});
     var html='<table class="an-patch-table"><thead><tr>'
-      +'<th></th><th>Fix#</th><th>Name</th><th>Universe</th><th>Addr</th><th>Channels</th><th></th>'
+      +'<th></th><th>Fix#</th><th>Name</th><th>Universe</th><th>Addr</th><th>Ch</th><th></th>'
       +'</tr></thead><tbody>';
     an_patches.forEach(function(p){
       var sel = an_selectedFixID===p.fixID;
       var name = fix_map[p.fixID]||('Fix#'+p.fixID);
-      html+='<tr class="'+(sel?'an-sel-row':'')+'" onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;">'
-        +'<td><div style="width:10px;height:10px;border-radius:2px;background:'+an_fixColor(p.fixID)+';"></div></td>'
-        +'<td style="color:var(--accent2);">'+p.fixID+'</td>'
-        +'<td>'+name+'</td>'
-        +'<td>'+p.universe+'</td>'
-        +'<td style="color:var(--accent);">'+p.startAddr+'</td>'
-        +'<td style="color:var(--text-dim);">'+p.startAddr+'–'+(p.startAddr+DMX_FP-1)+'</td>'
+      html+='<tr class="'+(sel?'an-sel-row':'')+'" data-fid="'+p.fixID+'">'
+        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;"><div style="width:10px;height:10px;border-radius:2px;background:'+an_fixColor(p.fixID)+';"></div></td>'
+        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;color:var(--accent2);">'+p.fixID+'</td>'
+        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;">'+name+'</td>'
+        +'<td><input type="number" class="an-num" style="width:44px;" value="'+p.universe+'" min="0" max="32767"'
+          +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',+this.value,null)"></td>'
+        +'<td><input type="number" class="an-num" style="width:44px;color:var(--accent);" value="'+p.startAddr+'" min="1" max="512"'
+          +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',null,+this.value)"></td>'
+        +'<td style="color:var(--text-dim);font-size:10px;">'+p.startAddr+'–'+(p.startAddr+DMX_FP-1)+'</td>'
         +'<td><button class="an-del" onclick="an_del(event,'+p.fixID+')">&#10005;</button></td>'
         +'</tr>';
     });
@@ -176,6 +178,22 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     if(p && an_selectedFixID!==null) an_gotoUniverse(p.universe);
     else { an_renderGrid(); an_renderTable(); }
     if(typeof toast==='function' && an_selectedFixID!==null) toast('Fix#'+fixID+' selected — click a grid cell to patch');
+  };
+
+  window.an_updatePatch=function(fixID, uni, addr){
+    var p=an_patches.find(function(x){return x.fixID===fixID;});
+    if(!p) return;
+    var data={universe:uni!==null?uni:p.universe, startAddr:addr!==null?addr:p.startAddr};
+    fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
+        if(uni!==null){ p.universe=uni; if(an_selectedFixID===fixID) an_gotoUniverse(uni); }
+        if(addr!==null) p.startAddr=addr;
+        an_renderGrid(); an_renderTable();
+        if(typeof toast==='function') toast('Patch updated');
+      }
+    });
   };
 
   window.an_del=function(e,fixID){

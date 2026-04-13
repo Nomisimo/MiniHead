@@ -24,6 +24,7 @@ int curPan = 90, curTilt = 90;
 bool rainbowActive = false;
 uint8_t rainbowHue = 0;
 unsigned long lastRainbowStep = 0;
+static uint8_t _preRainbowR = 0, _preRainbowG = 0, _preRainbowB = 0, _preRainbowW = 0;
 
 // ── Hardware output ───────────────────────────────────────────────
 
@@ -52,9 +53,14 @@ void hueToRGB(uint8_t hue, uint8_t &r, uint8_t &g, uint8_t &b) {
 
 void applyCommand(const String& cmd) {
   if (cmd.startsWith("RAINBOW:")) {
-    rainbowActive = (cmd.substring(8).toInt() == 1);
+    bool newState = (cmd.substring(8).toInt() == 1);
+    if (newState && !rainbowActive) {
+      // Save current color before starting rainbow
+      _preRainbowR = curR; _preRainbowG = curG; _preRainbowB = curB; _preRainbowW = curW;
+    }
+    rainbowActive = newState;
     rainbowHue = 0;
-    if (!rainbowActive) setLED(curR, curG, curB, curW);
+    if (!rainbowActive) setLED(_preRainbowR, _preRainbowG, _preRainbowB, _preRainbowW);
     return;
   }
   rainbowActive = false;

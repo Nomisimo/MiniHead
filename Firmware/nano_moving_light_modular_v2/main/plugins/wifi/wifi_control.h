@@ -329,6 +329,25 @@ void handleFireCue() {
   sendJson(404,"{\"status\":\"error\",\"message\":\"Not found\"}");
 }
 
+void handleReorderCues() {
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain"))) { sendJson(400,"{\"status\":\"error\"}"); return; }
+  JsonArray order = doc["order"].as<JsonArray>();
+  if (order.isNull()) { sendJson(400,"{\"status\":\"error\",\"message\":\"Missing order\"}"); return; }
+  Cue temp[MAX_CUES];
+  int newCount = 0;
+  for (JsonVariant v : order) {
+    unsigned long id = v.as<unsigned long>();
+    for (int i=0; i<cueCount; i++) {
+      if (cues[i].id == id) { temp[newCount++] = cues[i]; break; }
+    }
+  }
+  if (newCount != cueCount) { sendJson(400,"{\"status\":\"error\",\"message\":\"Count mismatch\"}"); return; }
+  for (int i=0; i<cueCount; i++) cues[i] = temp[i];
+  saveCuesToFlash();
+  sendJson(200,"{\"status\":\"ok\"}");
+}
+
 void handleSeqStart() {
   JsonDocument doc;
   if (deserializeJson(doc, server.arg("plain"))) { sendJson(400,"{\"status\":\"error\"}"); return; }
@@ -352,6 +371,7 @@ void setupRoutes() {
   server.on("/api/rainbow",           HTTP_POST, handleRainbow);
   server.on("/api/cues",              HTTP_GET,  handleGetCues);
   server.on("/api/cues",              HTTP_POST, handleSaveCue);
+  server.on("/api/cues/reorder",      HTTP_PUT,  handleReorderCues);
   server.on("/api/sequencer/start",   HTTP_POST, handleSeqStart);
   server.on("/api/sequencer/stop",    HTTP_POST, handleSeqStop);
   server.on("/api/sequencer/status",  HTTP_GET,  handleSeqStatus);

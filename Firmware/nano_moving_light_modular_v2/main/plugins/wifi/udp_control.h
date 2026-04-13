@@ -14,6 +14,7 @@ static WiFiUDP _cmdUDP;
 // ── Identify watchdog ─────────────────────────────────────────────
 static bool          _identifyActive  = false;
 static unsigned long _identifyLastMsg = 0;
+static uint8_t       _preIdentR=0, _preIdentG=0, _preIdentB=0, _preIdentW=0;
 #define IDENTIFY_TIMEOUT_MS 2000
 
 // ── Sender (called from leader / wifi_control handlers) ───────────
@@ -73,6 +74,7 @@ void udp_handlePacket(const char* data, int len) {
       if (!_identifyActive) {
         Serial.println("[UDP] IDENTIFY ON");
         _identifyActive = true;
+        _preIdentR = curR; _preIdentG = curG; _preIdentB = curB; _preIdentW = curW;
       }
       _identifyLastMsg = millis();
       setLED(255, 255, 255, 255);
@@ -86,7 +88,7 @@ void udp_handlePacket(const char* data, int len) {
     if (strcmp(mac, ownMAC) == 0 && _identifyActive) {
       Serial.println("[UDP] IDENTIFY OFF");
       _identifyActive = false;
-      setLED(curR, curG, curB, curW);
+      setLED(_preIdentR, _preIdentG, _preIdentB, _preIdentW);
     }
     return;
   }
@@ -140,7 +142,7 @@ void udp_control_loop() {
   if (_identifyActive && (millis() - _identifyLastMsg > IDENTIFY_TIMEOUT_MS)) {
     Serial.println("[UDP] Identify watchdog timeout — restoring LED");
     _identifyActive = false;
-    setLED(curR, curG, curB, curW);
+    setLED(_preIdentR, _preIdentG, _preIdentB, _preIdentW);
   }
 }
 

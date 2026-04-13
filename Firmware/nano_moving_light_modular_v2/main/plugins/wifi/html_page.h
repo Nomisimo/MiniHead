@@ -157,6 +157,12 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   #toast.ok{border-color:var(--success);color:var(--success);}
   #toast.err{border-color:var(--danger);color:var(--danger);}
   @media(min-width:900px){#toast{left:auto;width:auto;}}
+  /* ── Art-Net bar ── */
+  #artnet-bar{display:none;align-items:center;gap:8px;padding:5px 16px;background:rgba(34,197,94,0.12);border-bottom:1px solid var(--success);font-family:var(--mono);font-size:11px;color:var(--success);letter-spacing:1px;}
+  #artnet-bar.visible{display:flex;}
+  #artnet-bar-dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);animation:pulse 1s infinite;flex-shrink:0;}
+  .artnet-locked{pointer-events:none!important;opacity:0.45;transition:opacity 0.3s;}
+  .area-light,.area-motion,.area-rainbow,.area-serial,.area-sequencer{position:relative;}
 </style>
 </head>
 <body>
@@ -168,6 +174,11 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <span style="color:var(--text-dim)">ESP32</span>
   </div>
 </header>
+<div id="artnet-bar">
+  <div id="artnet-bar-dot"></div>
+  <span>&#9679;&nbsp;Running on: Art-Net</span>
+  <span id="artnet-bar-count" style="color:var(--text-dim);margin-left:auto;"></span>
+</div>
 
 <div class="main">
 
@@ -208,9 +219,14 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
   </div>
 
-  <!-- Network Heads Plugin -->
-  <div class="panel area-future" id="module-container">
-    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
+  <!-- Modules: Network Heads + Art-Net Patch -->
+  <div class="area-future" style="background:var(--bg)">
+    <div class="panel" id="module-container" style="border-bottom:1px solid var(--border)">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
+    </div>
+    <div class="panel" id="artnet-module-container">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net...</div>
+    </div>
   </div>
 
   <!-- ── RIGHT 1/3 ── -->
@@ -339,6 +355,10 @@ function loadModule(url, id) {
   });
 }
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
+loadModule('/plugins/artnet/panel.html','artnet-module-container');
+var _artnetWasActive=false;
+function an_pollStatus(){fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){if(d.active===_artnetWasActive)return;_artnetWasActive=d.active;document.getElementById('artnet-bar').classList.toggle('visible',d.active);document.getElementById('artnet-bar-count').textContent=d.active?d.patchCount+' fixture(s)':'';['.area-light','.area-motion','.area-rainbow','.area-serial','.area-sequencer'].forEach(function(sel){var el=document.querySelector(sel);if(el)el.classList.toggle('artnet-locked',d.active);});}).catch(function(){});}
+setInterval(an_pollStatus,500);
 </script>
 </body>
 </html>

@@ -9,6 +9,10 @@
 #include <WiFiUdp.h>
 #include "discovery_globals.h"
 
+// Forward decl: artnet_upsertPatch is defined in artnet_control.h,
+// which is included after this file in wifi_control.h.
+void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
+
 static WiFiUDP _cmdUDP;
 
 // ── Identify watchdog ─────────────────────────────────────────────
@@ -113,6 +117,13 @@ void udp_handlePacket(const char* data, int len) {
       if (strncmp(cmd, "SETNAME:", 8) == 0) {
         discovery_saveName(cmd + 8);
         Serial.printf("[UDP] Name set to \"%s\"\n", ownName);
+        return;
+      }
+      if (strncmp(cmd, "SETPATCH:", 9) == 0) {
+        int fixID = 0, uni = 0, addr = 1;
+        sscanf(cmd + 9, "%d,%d,%d", &fixID, &uni, &addr);
+        artnet_upsertPatch(fixID, (uint16_t)uni, (uint16_t)addr);
+        Serial.printf("[UDP] SETPATCH: Fix#%d U%d @%d\n", fixID, uni, addr);
         return;
       }
       Serial.printf("[UDP] CMD for us: %s\n", cmd);

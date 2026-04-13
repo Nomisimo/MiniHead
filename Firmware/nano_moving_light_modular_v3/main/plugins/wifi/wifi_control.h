@@ -16,7 +16,6 @@
 #include "discovery_globals.h"
 #include "udp_control.h"
 #include "../artnet/artnet_panel_html.h"
-#include "../artnet/artnet_control.h"
 
 #define MAX_CUES         32
 #define MAX_TARGETS      16   // max FixID targets per cue
@@ -78,6 +77,9 @@ void sendJson(int code, const String& json) {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(code, "application/json", json);
 }
+
+// artnet_control.h needs server + sendJson — include after they're defined
+#include "../artnet/artnet_control.h"
 
 String fixTargetsToJson(const Cue& c) {
   String s = "[";

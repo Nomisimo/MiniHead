@@ -50,19 +50,20 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
         <th>Name</th>
         <th>MAC</th>
         <th>IP</th>
+        <th>DMX</th>
         <th>Role</th>
         <th>Identify</th>
       </tr>
     </thead>
     <tbody id="nh_tbody">
-      <tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
+      <tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
     </tbody>
   </table>
 </div>
 
 <script>
 (function(){
-  var headsData=[],fixturePool=[],selectedMACs=[],selectedOfflineFixIDs=[],identTimers={};
+  var headsData=[],fixturePool=[],artnetPatch=[],selectedMACs=[],selectedOfflineFixIDs=[],identTimers={};
 
   nh_load();
   setInterval(nh_load,2000);
@@ -70,8 +71,9 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
   function nh_load(){
     Promise.all([
       fetch('/api/heads').then(function(r){return r.json();}),
-      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];})
-    ]).then(function(res){headsData=res[0];fixturePool=res[1];nh_render();}).catch(function(){});
+      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
+    ]).then(function(res){headsData=res[0];fixturePool=res[1];artnetPatch=res[2];nh_render();}).catch(function(){});
   }
 
   function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -81,7 +83,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
     var active=document.activeElement;if(active&&tbody&&tbody.contains(active))return;
     tbody.innerHTML='';
     if(!headsData||!headsData.length){
-      tbody.innerHTML='<tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td></tr>';
+      tbody.innerHTML='<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td></tr>';
     } else {
       var fixCount={};
       headsData.forEach(function(h){if(h.fixID>0)fixCount[h.fixID]=(fixCount[h.fixID]||0)+1;});
@@ -94,6 +96,8 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
       });
       headsData.forEach(function(h){
         var sel=selectedMACs.indexOf(h.mac)>=0,dup=h.fixID>0&&fixCount[h.fixID]>1;
+        var patch=artnetPatch.find(function(p){return p.fixID===h.fixID;});
+        var dmxStr=patch?('U'+patch.universe+'.'+patch.startAddr):'—';
         var tr=document.createElement('tr');
         if(sel)tr.className='selected-head';
         tr.innerHTML=
@@ -103,6 +107,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
           '<td><input class="name-input" type="text" value="'+esc(h.name||'')+'" placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)"></td>'+
           '<td style="color:var(--text-dim);" title="'+h.mac+'">...'+h.mac.slice(-8)+'</td>'+
           '<td style="color:var(--accent);">'+h.ip+'</td>'+
+          '<td style="font-family:var(--mono);font-size:10px;color:'+(patch?'var(--success)':'var(--text-dim)')+';">'+dmxStr+'</td>'+
           '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span></td>'+
           '<td><button class="identify-btn" data-mac="'+h.mac+'" onmousedown="nh_identStart(\''+h.mac+'\')" onmouseup="nh_identStop(\''+h.mac+'\')" onmouseleave="nh_identStop(\''+h.mac+'\')" ontouchstart="nh_identStart(\''+h.mac+'\')" ontouchend="nh_identStop(\''+h.mac+'\')">HOLD</button></td>';
         tbody.appendChild(tr);
@@ -113,10 +118,12 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
     var offline=fixturePool.filter(function(f){return !(f.mac&&onMac.indexOf(f.mac)>=0)&&!(f.id>0&&onFix.indexOf(f.id)>=0);});
     if(offline.length>0){
       var sep=document.createElement('tr');
-      sep.innerHTML='<td colspan="7" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">-- OFFLINE --</td>';
+      sep.innerHTML='<td colspan="8" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">-- OFFLINE --</td>';
       tbody.appendChild(sep);
       offline.forEach(function(f){
         var sel=selectedOfflineFixIDs.indexOf(f.id)>=0,tr=document.createElement('tr');
+        var opatch=artnetPatch.find(function(p){return p.fixID===f.id;});
+        var odmxStr=opatch?('U'+opatch.universe+'.'+opatch.startAddr):'—';
         tr.style.opacity='0.55';
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+' onchange="nh_toggleOffline('+f.id+',this.checked)"></td>'+
@@ -124,6 +131,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
           '<td><input class="name-input" type="text" value="'+esc(f.name||'')+'" placeholder="Name..." onchange="nh_renameFixture('+f.id+',this.value)"></td>'+
           '<td style="color:var(--text-dim);">'+(f.mac?('...'+f.mac.slice(-8)):'--')+'</td>'+
           '<td>--</td>'+
+          '<td style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">'+odmxStr+'</td>'+
           '<td><span class="role-badge" style="background:rgba(107,107,138,0.15);color:var(--text-dim)">OFFLINE</span></td>'+
           '<td><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" style="color:var(--danger);border-color:var(--danger);">X</button></td>';
         tbody.appendChild(tr);

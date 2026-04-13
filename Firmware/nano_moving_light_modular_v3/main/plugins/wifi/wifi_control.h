@@ -404,6 +404,8 @@ void setupRoutes() {
     }
     if (path.startsWith("/api/artnet/patch/") && server.method()==HTTP_DELETE)
       { handleDeleteArtnetPatch(); return; }
+    if (path.startsWith("/api/artnet/patch/") && server.method()==HTTP_PUT)
+      { handleUpdateArtnetPatch(); return; }
     server.send(404,"text/plain","Not found");
   });
 }

@@ -24,3 +24,4 @@
 
 #include "plugins/startup_animation/startup_animation.h"
 #include "plugins/wifi/wifi.h"
+#include "plugins/artnet/artnet.h"    // Art-Net / DMX512 receiver — port 6454, runs on every node

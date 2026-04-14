@@ -100,9 +100,11 @@ void wifi_manager_setup() {
   String pass = p.getString("pass", WIFI_PASSWORD);
   p.end();
 
-  Serial.printf("[WiFiMgr] Connecting to \"%s\"...\n", ssid.c_str());
+  Serial.printf("[WiFiMgr] Connecting to \"%s\"\n", ssid.c_str());
 
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(200);
   WiFi.begin(ssid.c_str(), pass.c_str());
 
   // Visual feedback: cyan blink during connect

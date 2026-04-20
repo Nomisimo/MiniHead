@@ -2,7 +2,7 @@
 
 // ── Art-Net Control ───────────────────────────────────────────────
 // HTTP API routes for Art-Net patch management.
-// NVS storage for patch records.
+// LittleFS JSON storage for patch records (/artnet.json).
 // Helpers for leader→follower UDP patch push.
 //
 // Included from wifi_control.h, which owns `server` and `prefs`.
@@ -11,32 +11,36 @@
 #include "artnet_globals.h"
 #include "artnet_receiver.h"
 
-// ── NVS helpers ───────────────────────────────────────────────────
+// ── Storage (/artnet.json) ────────────────────────────────────────
+// Schema: [{"fixID":1,"universe":0,"startAddr":1}]
 
 void artnet_savePatches() {
-  Preferences p;
-  p.begin("artnet", false);
-  p.putInt("version", ARTNET_NVS_VERSION);
-  p.putInt("count", artnetPatchCount);
-  for (int i = 0; i < artnetPatchCount; i++)
-    p.putBytes(("p" + String(i)).c_str(), &artnetPatches[i], sizeof(ArtnetPatch));
-  p.end();
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < artnetPatchCount; i++) {
+    JsonObject o = arr.add<JsonObject>();
+    o["fixID"]     = artnetPatches[i].fixID;
+    o["universe"]  = artnetPatches[i].universe;
+    o["startAddr"] = artnetPatches[i].startAddr;
+  }
+  storage_writeJson("/artnet.json", doc);
 }
 
 void artnet_loadPatches() {
-  Preferences p;
-  p.begin("artnet", true);
-  if (p.getInt("version", 0) != ARTNET_NVS_VERSION) {
-    p.end();
-    artnetPatchCount = 0;
-    Serial.println("[ArtNet] Patch store version mismatch — cleared");
+  artnetPatchCount = 0;
+  JsonDocument doc;
+  if (!storage_readJson("/artnet.json", doc)) {
+    Serial.println("[ArtNet] No patch data — starting fresh");
     return;
   }
-  artnetPatchCount = constrain(p.getInt("count", 0), 0, MAX_PATCHES);
-  for (int i = 0; i < artnetPatchCount; i++)
-    p.getBytes(("p" + String(i)).c_str(), &artnetPatches[i], sizeof(ArtnetPatch));
-  p.end();
-  Serial.printf("[ArtNet] Loaded %d patch(es)\n", artnetPatchCount);
+  for (JsonObject o : doc.as<JsonArray>()) {
+    if (artnetPatchCount >= MAX_PATCHES) break;
+    artnetPatches[artnetPatchCount].fixID     = o["fixID"]     | 0;
+    artnetPatches[artnetPatchCount].universe  = o["universe"]  | 0;
+    artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
+    artnetPatchCount++;
+  }
+  Serial.printf("[ArtNet] Loaded %d patch(es) from /artnet.json\n", artnetPatchCount);
 }
 
 // ── Upsert helper — add or update a patch by fixID ───────────────

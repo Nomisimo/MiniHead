@@ -4,20 +4,14 @@
 
 // ── Types & constants shared across wifi plugin ───────────────────
 
-enum NodeRole {
-  ROLE_UNDECIDED,
-  ROLE_AP_PORTAL,   // WiFi failed → running captive-portal AP
-  ROLE_STANDALONE,  // WiFi OK, no PC leader found → own web server
-  ROLE_FOLLOWER,    // PC leader alive → receiving UDP commands
-  ROLE_LEADER       // reserved (no ESP ever self-elects in v4)
-};
+enum NodeRole { ROLE_UNDECIDED, ROLE_LEADER, ROLE_FOLLOWER };
 
 #define MAX_PEERS          16
 #define BEACON_PORT        4210
 #define CMD_PORT           4211
 #define BEACON_INTERVAL_MS 2000
-#define LEADER_TIMEOUT_MS  8000    // (was 20s) — switch to standalone faster
-#define HOLD_DURATION_MS   5000    // (was 10s)
+#define LEADER_TIMEOUT_MS  20000   // peer goes stale after 20s (tolerates brief WiFi gaps)
+#define HOLD_DURATION_MS   10000   // hold current state 10s before re-electing as leader
 
 struct Peer {
   char mac[18];

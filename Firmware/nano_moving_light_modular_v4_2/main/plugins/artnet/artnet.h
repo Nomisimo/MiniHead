@@ -9,7 +9,7 @@
 //   - Each ESP applies channels that match its own patched fixID
 //   - The leader additionally fans out data to followers via UDP CMD
 //
-// HTTP routes and NVS storage are handled by artnet_control.h,
+// HTTP routes and LittleFS storage are handled by artnet_control.h,
 // which is included from wifi_control.h (shares the HTTP server).
 //
 // Add to config.h:
@@ -23,7 +23,7 @@
 
 void artnet_setup() {
   artnet_receiver_setup();
-  // artnet_control_setup() (NVS patch load) is called from wifi_control_setup()
+  // artnet_control_setup() (LittleFS patch load) is called from wifi_control_setup()
   // so patches are available before the first Art-Net packet arrives.
 }
 

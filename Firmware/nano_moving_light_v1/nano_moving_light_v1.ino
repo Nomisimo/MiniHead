@@ -147,10 +147,14 @@ void parseLine(String line) {
   }
 }
 
+// ── Version ───────────────────────────────────────────────────────
+#define FIRMWARE_VERSION "v1 — Serial Only"
+
 // ── Setup ─────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
+  Serial.println("[MiniHead] " FIRMWARE_VERSION);
 
   // NeoPixel initialisieren
   strip.begin();

@@ -7,12 +7,11 @@
 
 #include <Arduino.h>
 
-#define ARTNET_PORT        6454
-#define DMX_CHANNELS       512
-#define DMX_FOOTPRINT      7        // channels per fixture
-#define MAX_PATCHES        32
-#define ARTNET_TIMEOUT_MS  3000
-#define ARTNET_NVS_VERSION 1
+#define ARTNET_PORT       6454
+#define DMX_CHANNELS      512
+#define DMX_FOOTPRINT     7        // channels per fixture
+#define MAX_PATCHES       32
+#define ARTNET_TIMEOUT_MS 3000
 
 // ── Per-fixture patch record ─────────────────────────────────────
 struct ArtnetPatch {
@@ -35,4 +34,3 @@ extern ArtnetPatch   artnetPatches[MAX_PATCHES];
 extern int           artnetPatchCount;
 extern bool          artnetActive;
 extern unsigned long artnetLastPacket;
-extern uint8_t       artnetDmxBuf[DMX_CHANNELS]; // public for future dmx_output plugin

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-pc_leader.py — MiniHead PC Leader
+pc_leader.py — MiniHead PC Leader  [PC App v4.2]
 Runs on your Mac/PC. Acts as the network leader:
   - Sends UDP beacons every second
   - Collects peer beacons → builds peer table
@@ -22,14 +22,18 @@ import json
 import os
 from flask import Flask, request, jsonify, send_from_directory
 
+# ── Version ───────────────────────────────────────────────────────
+APP_VERSION = "PC App v4.2"
+
 # ── Config ────────────────────────────────────────────────────────
 BEACON_PORT   = 4210
 CMD_PORT      = 4211
 BEACON_INTERVAL = 1.0       # seconds
 PEER_TIMEOUT    = 12.0      # seconds before peer is removed (ESP32 beacons every 2s)
 OWN_FIX_ID      = 0         # set your fixture ID here
-CUES_FILE       = "pc_cues.json"
-FIXTURES_FILE   = "pc_fixtures.json"
+CUES_FILE         = "pc_cues.json"
+FIXTURES_FILE     = "pc_fixtures.json"
+ARTNET_PATCH_FILE = "pc_artnet_patch.json"
 
 # ── Own identity ──────────────────────────────────────────────────
 def get_own_mac():
@@ -142,6 +146,22 @@ def save_cues():
     with open(CUES_FILE, "w") as f:
         json.dump(cues, f, indent=2)
 
+# ── Art-Net patch storage ─────────────────────────────────────────
+# Each patch: {"fixID": int, "universe": int, "startAddr": int}
+artnet_patches_lock = threading.Lock()
+artnet_patches = []  # list of patch dicts
+
+def load_artnet_patches():
+    global artnet_patches
+    if os.path.exists(ARTNET_PATCH_FILE):
+        with open(ARTNET_PATCH_FILE) as f:
+            artnet_patches = json.load(f)
+        print(f"[ArtNet] Loaded {len(artnet_patches)} patch(es)")
+
+def save_artnet_patches():
+    with open(ARTNET_PATCH_FILE, "w") as f:
+        json.dump(artnet_patches, f, indent=2)
+
 # ── UDP beacon sender ─────────────────────────────────────────────
 def beacon_sender():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -213,6 +233,15 @@ def serve_ui():
 @app.route("/plugins/wifi/discovery_panel.html")
 def serve_discovery_panel():
     return send_from_directory("plugins/wifi", "discovery_panel.html")
+
+@app.route("/plugins/artnet/artnet_panel.html")
+def serve_artnet_panel():
+    return send_from_directory("plugins/artnet", "artnet_panel.html")
+
+# ── /api/version ─────────────────────────────────────────────────
+@app.route("/api/version")
+def api_version():
+    return jsonify({"version": APP_VERSION})
 
 # ── /api/status ───────────────────────────────────────────────────
 @app.route("/api/status")
@@ -514,6 +543,81 @@ def api_rainbow():
     print(f"[Rainbow] Global {'ON' if on else 'OFF'} — sent to all peers")
     return jsonify({"status": "ok"})
 
+# ── /api/artnet/patch ─────────────────────────────────────────────
+@app.route("/api/artnet/patch")
+def api_artnet_get():
+    with artnet_patches_lock:
+        return jsonify(list(artnet_patches))
+
+@app.route("/api/artnet/patch", methods=["POST"])
+def api_artnet_add():
+    data = request.get_json() or {}
+    fix_id     = int(data.get("fixID", 0))
+    universe   = int(data.get("universe", 0))
+    start_addr = int(data.get("startAddr", 1))
+    if fix_id <= 0:
+        return jsonify({"status": "error", "message": "Invalid fixID"}), 400
+    if not (1 <= start_addr <= 512):
+        return jsonify({"status": "error", "message": "startAddr out of range"}), 400
+    with artnet_patches_lock:
+        # Remove any existing patch for this fixID
+        artnet_patches[:] = [p for p in artnet_patches if p["fixID"] != fix_id]
+        artnet_patches.append({"fixID": fix_id, "universe": universe, "startAddr": start_addr})
+        artnet_patches.sort(key=lambda p: (p["universe"], p["startAddr"]))
+        save_artnet_patches()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/artnet/patch/<int:fix_id>", methods=["PUT"])
+def api_artnet_update(fix_id):
+    data = request.get_json() or {}
+    with artnet_patches_lock:
+        p = next((x for x in artnet_patches if x["fixID"] == fix_id), None)
+        if not p:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        if "universe" in data:
+            p["universe"]  = int(data["universe"])
+        if "startAddr" in data:
+            p["startAddr"] = int(data["startAddr"])
+        save_artnet_patches()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/artnet/patch/<int:fix_id>", methods=["DELETE"])
+def api_artnet_delete(fix_id):
+    with artnet_patches_lock:
+        before = len(artnet_patches)
+        artnet_patches[:] = [p for p in artnet_patches if p["fixID"] != fix_id]
+        if len(artnet_patches) == before:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        save_artnet_patches()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/artnet/patch/bulk", methods=["POST"])
+def api_artnet_bulk():
+    data       = request.get_json() or {}
+    universe   = int(data.get("universe",   0))
+    start_addr = int(data.get("startAddr",  1))
+    count      = int(data.get("count",      1))
+    first_fix  = int(data.get("firstFixID", 1))
+    DMX_FP = 7
+    if count < 1 or count > 32:
+        return jsonify({"status": "error", "message": "count must be 1–32"}), 400
+    if start_addr + count * DMX_FP - 1 > 512:
+        return jsonify({"status": "error", "message": "Addresses exceed 512"}), 400
+    with artnet_patches_lock:
+        for i in range(count):
+            fix_id = first_fix + i
+            addr   = start_addr + i * DMX_FP
+            artnet_patches[:] = [p for p in artnet_patches if p["fixID"] != fix_id]
+            artnet_patches.append({"fixID": fix_id, "universe": universe, "startAddr": addr})
+        artnet_patches.sort(key=lambda p: (p["universe"], p["startAddr"]))
+        save_artnet_patches()
+    return jsonify({"status": "ok", "count": count})
+
+@app.route("/api/artnet/status")
+def api_artnet_status():
+    with artnet_patches_lock:
+        return jsonify({"patches": len(artnet_patches)})
+
 # ── Stub endpoints (for UI compatibility) ─────────────────────────
 @app.route("/api/ports")
 def api_ports():
@@ -529,14 +633,16 @@ def api_disconnect(): return jsonify({"status": "ok"})
 if __name__ == "__main__":
     load_cues()
     load_fixtures()
+    load_artnet_patches()
 
-    threading.Thread(target=beacon_sender,   daemon=True).start()
-    threading.Thread(target=beacon_receiver, daemon=True).start()
+    threading.Thread(target=beacon_sender,    daemon=True).start()
+    threading.Thread(target=beacon_receiver,  daemon=True).start()
     threading.Thread(target=sequencer_runner, daemon=True).start()
 
+    print(f"[PC Leader] {APP_VERSION}")
     print(f"[PC Leader] MAC:  {OWN_MAC}")
     print(f"[PC Leader] IP:   {OWN_IP}")
-    print(f"[PC Leader] Open: http://localhost:5000")
+    print(f"[PC Leader] Open: http://localhost:8080")
     print(f"[PC Leader] Beaconing on port {BEACON_PORT}, CMD on port {CMD_PORT}")
 
     app.run(host="0.0.0.0", port=8080, debug=False)

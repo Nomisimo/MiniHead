@@ -1,15 +1,14 @@
 #pragma once
 
-// ── WiFi Control Plugin (v4) ─────────────────────────────────────
+// ── WiFi Control Plugin ───────────────────────────────────────────
 // Handles: HTTP server, all API endpoints, cue storage, sequencer
-// Runs when nodeRole == ROLE_STANDALONE (started/stopped by discovery.h)
+// Only runs when nodeRole == ROLE_LEADER (started by discovery.h)
 // Depends on: core.h, discovery_globals.h, udp_control.h
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
-#include <Preferences.h>
 #include "html_page.h"
 #include "core_globals.h"
 #include "discovery_panel_html.h"
@@ -17,12 +16,10 @@
 #include "udp_control.h"
 #include "../artnet/artnet_panel_html.h"
 
-#define MAX_CUES         32
-#define MAX_TARGETS      16   // max FixID targets per cue
-#define CUES_NVS_VERSION 2    // bump when Cue struct changes
+#define MAX_CUES    32
+#define MAX_TARGETS 16   // max FixID targets per cue
 
 WebServer server(80);
-Preferences prefs;
 
 struct Cue {
   unsigned long id;
@@ -43,32 +40,52 @@ int seqIdCount = 0;
 int seqIndex = 0;
 unsigned long lastSeqStep = 0;
 
-// ── Flash storage ─────────────────────────────────────────────────
+// ── Storage (/cues.json) ──────────────────────────────────────────
+// Schema: [{"id":1234,"name":"...","r":255,"g":0,"b":0,"w":0,
+//            "pan":90,"tilt":90,"fixTargets":[1,2]}]
 
 void saveCuesToFlash() {
-  prefs.begin("cues", false);
-  prefs.putInt("version", CUES_NVS_VERSION);
-  prefs.putInt("count", cueCount);
-  for (int i=0; i<cueCount; i++)
-    prefs.putBytes(("c"+String(i)).c_str(), &cues[i], sizeof(Cue));
-  prefs.end();
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < cueCount; i++) {
+    const Cue& c = cues[i];
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = c.id; o["name"] = c.name;
+    o["r"] = c.r; o["g"] = c.g; o["b"] = c.b; o["w"] = c.w;
+    o["pan"] = c.pan; o["tilt"] = c.tilt;
+    JsonArray ft = o["fixTargets"].to<JsonArray>();
+    for (int t = 0; t < c.targetCount; t++) ft.add(c.fixTargets[t]);
+  }
+  storage_writeJson("/cues.json", doc);
 }
 
 void loadCuesFromFlash() {
-  prefs.begin("cues", false);
-  if (prefs.getInt("version", 0) != CUES_NVS_VERSION) {
-    prefs.clear();
-    prefs.putInt("version", CUES_NVS_VERSION);
-    prefs.end();
-    cueCount = 0;
-    Serial.println("[WiFi] Cue store migrated — old cues cleared");
+  cueCount = 0;
+  JsonDocument doc;
+  if (!storage_readJson("/cues.json", doc)) {
+    Serial.println("[WiFi] No cue data — starting fresh");
     return;
   }
-  cueCount = prefs.getInt("count", 0);
-  if (cueCount > MAX_CUES) cueCount = 0;
-  for (int i=0; i<cueCount; i++)
-    prefs.getBytes(("c"+String(i)).c_str(), &cues[i], sizeof(Cue));
-  prefs.end();
+  for (JsonObject o : doc.as<JsonArray>()) {
+    if (cueCount >= MAX_CUES) break;
+    Cue& c = cues[cueCount];
+    c.id = o["id"] | (unsigned long)millis();
+    strlcpy(c.name, o["name"] | "Cue", sizeof(c.name));
+    c.r    = constrain((int)(o["r"]    | 0),  0, 255);
+    c.g    = constrain((int)(o["g"]    | 0),  0, 255);
+    c.b    = constrain((int)(o["b"]    | 0),  0, 255);
+    c.w    = constrain((int)(o["w"]    | 0),  0, 255);
+    c.pan  = constrain((int)(o["pan"]  | 90), 0, 180);
+    c.tilt = constrain((int)(o["tilt"] | 90), 0, 180);
+    c.targetCount = 0;
+    for (JsonVariant v : o["fixTargets"].as<JsonArray>()) {
+      if (c.targetCount >= MAX_TARGETS) break;
+      c.fixTargets[c.targetCount++] = v.as<int>();
+    }
+    if (c.targetCount == 0) { c.fixTargets[0] = 0; c.targetCount = 1; }
+    cueCount++;
+  }
+  Serial.printf("[WiFi] Loaded %d cue(s) from /cues.json\n", cueCount);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -124,57 +141,6 @@ void fireCueToTargets(const Cue& c) {
 }
 
 // ── Route handlers ────────────────────────────────────────────────
-
-// ── Mode endpoint ─────────────────────────────────────────────────
-void handleMode() {
-  const char* m =
-    (nodeRole == ROLE_STANDALONE) ? "standalone" :
-    (nodeRole == ROLE_FOLLOWER)   ? "follower"   : "unknown";
-  sendJson(200, String("{\"mode\":\"") + m + "\"}");
-}
-
-// ── Cue Export / Import ───────────────────────────────────────────
-
-void handleExportCues() {
-  String json = "[";
-  for (int i = 0; i < cueCount; i++) { if (i > 0) json += ","; json += cueToJson(cues[i]); }
-  json += "]";
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Content-Disposition", "attachment; filename=\"cues.json\"");
-  server.send(200, "application/json", json);
-}
-
-void handleImportCues() {
-  JsonDocument doc;
-  if (deserializeJson(doc, server.arg("plain"))) { sendJson(400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return; }
-  JsonArray arr = doc.as<JsonArray>();
-  if (arr.isNull()) { sendJson(400, "{\"status\":\"error\",\"message\":\"Expected array\"}"); return; }
-  bool replace = (server.arg("mode") != "append");
-  if (replace) cueCount = 0;
-  for (JsonObject obj : arr) {
-    if (cueCount >= MAX_CUES) break;
-    Cue& c = cues[cueCount];
-    unsigned long newId = obj["id"] | 0UL;
-    c.id = (newId > 0) ? newId : (unsigned long)millis() + cueCount;
-    strlcpy(c.name, obj["name"] | "Cue", sizeof(c.name));
-    c.r    = constrain((int)(obj["r"]    | 0),   0, 255);
-    c.g    = constrain((int)(obj["g"]    | 0),   0, 255);
-    c.b    = constrain((int)(obj["b"]    | 0),   0, 255);
-    c.w    = constrain((int)(obj["w"]    | 0),   0, 255);
-    c.pan  = constrain((int)(obj["pan"]  | 90),  0, 180);
-    c.tilt = constrain((int)(obj["tilt"] | 90),  0, 180);
-    c.targetCount = 0;
-    JsonArray ft = obj["fixTargets"].as<JsonArray>();
-    if (!ft.isNull()) for (JsonVariant v : ft) {
-      if (c.targetCount >= MAX_TARGETS) break;
-      c.fixTargets[c.targetCount++] = v.as<int>();
-    }
-    if (c.targetCount == 0) { c.fixTargets[0] = 0; c.targetCount = 1; }
-    cueCount++;
-  }
-  saveCuesToFlash();
-  sendJson(200, "{\"status\":\"ok\",\"count\":" + String(cueCount) + "}");
-}
 
 void handleRoot()           { server.sendHeader("Access-Control-Allow-Origin","*"); server.send_P(200,"text/html",INDEX_HTML); }
 void handleDiscoveryPanel() { server.sendHeader("Access-Control-Allow-Origin","*"); server.send_P(200,"text/html",DISCOVERY_PANEL_HTML); }
@@ -427,9 +393,6 @@ void setupRoutes() {
   server.on("/api/artnet/patch",            HTTP_GET,  handleGetArtnetPatch);
   server.on("/api/artnet/patch/bulk",       HTTP_POST, handleBulkArtnetPatch);
   server.on("/api/artnet/patch",            HTTP_POST, handlePostArtnetPatch);
-  server.on("/api/mode",               HTTP_GET,  handleMode);
-  server.on("/api/cues/export",        HTTP_GET,  handleExportCues);
-  server.on("/api/cues/import",        HTTP_POST, handleImportCues);
   server.on("/api/status",            HTTP_GET,  handleStatus);
   server.on("/api/ports",             HTTP_GET,  handlePorts);
   server.on("/api/connect",           HTTP_POST, handleConnect);
@@ -493,4 +456,4 @@ void wifi_control_loop() {
   }
 }
 // Note: wifi_control is NOT registered as a plugin — it is started
-// and stopped by discovery.h when the node enters/leaves STANDALONE mode.
+// and stopped by discovery.h when the node wins/loses election.

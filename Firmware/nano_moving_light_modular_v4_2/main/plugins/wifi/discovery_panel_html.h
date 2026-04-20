@@ -69,24 +69,11 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
   setInterval(nh_load,2000);
 
   function nh_load(){
-    fetch('/api/mode').then(function(r){return r.json();}).then(function(m){
-      if(m.mode==='standalone'){
-        var tbody=document.getElementById('nh_tbody');
-        if(tbody)tbody.innerHTML='<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px 0;">Standalone mode — no network peers</td></tr>';
-        return;
-      }
-      Promise.all([
-        fetch('/api/heads').then(function(r){return r.json();}),
-        fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
-        fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
-      ]).then(function(res){headsData=res[0];fixturePool=res[1];artnetPatch=res[2];nh_render();}).catch(function(){});
-    }).catch(function(){
-      Promise.all([
-        fetch('/api/heads').then(function(r){return r.json();}),
-        fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
-        fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
-      ]).then(function(res){headsData=res[0];fixturePool=res[1];artnetPatch=res[2];nh_render();}).catch(function(){});
-    });
+    Promise.all([
+      fetch('/api/heads').then(function(r){return r.json();}),
+      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
+    ]).then(function(res){headsData=res[0];fixturePool=res[1];artnetPatch=res[2];nh_render();}).catch(function(){});
   }
 
   function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}

@@ -54,7 +54,8 @@
       "serial"
       "cues"
       "sequencer"
-      "future";
+      "future"
+      "artpatch";
     gap:1px;
     background:var(--border);
   }
@@ -63,13 +64,14 @@
   @media(min-width:900px){
     .main{
       grid-template-columns:2fr 1fr;
-      grid-template-rows:auto auto auto auto 1fr;
+      grid-template-rows:auto auto auto auto 1fr auto;
       grid-template-areas:
         "cues       light"
         "sequencer  motion"
         "future     rainbow"
         "future     serial"
-        "future     .";
+        "future     ."
+        "artpatch   artpatch";
       min-height:calc(100vh - 49px);
     }
     .col-right{border-left:1px solid var(--border);}
@@ -82,6 +84,7 @@
   .area-cues      {grid-area:cues;}
   .area-sequencer {grid-area:sequencer;}
   .area-future    {grid-area:future;}
+  .area-artpatch  {grid-area:artpatch;}
 
   /* ── RGBW Faders ── */
   .faders-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;}
@@ -163,6 +166,7 @@
     <div class="status-dot"></div>
     <span class="ip-label" id="ipLabel">...</span>
     <span style="color:var(--text-dim)">PC LEADER</span>
+    <span style="color:var(--text-dim);font-size:10px;margin-left:4px;" id="appVersion"></span>
   </div>
 </header>
 
@@ -211,6 +215,7 @@
   </div>
 
   <!-- ── RIGHT 1/3 ── -->
+
 
   <!-- Light Control -->
   <div class="panel area-light col-right">
@@ -269,6 +274,11 @@
     </div>
   </div>
 
+  <!-- Art-Net Patch Module -->
+  <div class="panel area-artpatch" id="artnet-module-container">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net panel...</div>
+  </div>
+
 </div>
 <div id="toast"></div>
 
@@ -291,6 +301,7 @@
 <script>
 var rainbowActive=false,seqSelectedIds=[],sendTimer=null,_editCueId=null,_cDragId=null;
 fetch('/api/status').then(function(r){return r.json();}).then(function(d){if(d.ip)document.getElementById('ipLabel').textContent=d.ip;});
+fetch('/api/version').then(function(r){return r.json();}).then(function(d){if(d.version)document.getElementById('appVersion').textContent='['+d.version+']';});
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
 function updatePreview(){var v=getValues(),wr=Math.min(255,v.r+v.w),wg=Math.min(255,v.g+v.w),wb=Math.min(255,v.b+v.w),p=document.getElementById('ledPreview'),hex='rgb('+wr+','+wg+','+wb+')',br=(wr+wg+wb)/3;p.style.background=hex;p.style.boxShadow=br>10?'0 0 '+(20+br/4)+'px '+(8+br/8)+'px '+hex:'none';}
@@ -335,6 +346,7 @@ function loadModule(url, id) {
     });
 }
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
+loadModule('/plugins/artnet/artnet_panel.html','artnet-module-container');
 </script>
 </body>
 </html>

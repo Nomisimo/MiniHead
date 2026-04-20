@@ -1,4 +1,5 @@
 #pragma once
+#define FIRMWARE_VERSION "Modular v2 — Multi-Head Network"
 #include "plugin_registry.h"
 
 // ── Core Module ───────────────────────────────────────────────────
@@ -88,6 +89,7 @@ void applyCommand(const String& cmd) {
 // ── Module lifecycle ──────────────────────────────────────────────
 
 void core_setup() {
+  Serial.println("[MiniHead] " FIRMWARE_VERSION);
   strip.begin(); strip.setBrightness(255); setLED(0,0,0,0);
 
   ESP32PWM::allocateTimer(0); ESP32PWM::allocateTimer(1);

@@ -56,7 +56,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       "serial"
       "cues"
       "sequencer"
-      "future";
+      "future"
+      "artpatch";
     gap:1px;
     background:var(--border);
   }
@@ -182,7 +183,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   <div class="connection-bar">
     <div class="status-dot"></div>
     <span class="ip-label" id="ipLabel">...</span>
-    <span style="color:var(--text-dim)" id="modeLabel">ESP32</span>
+    <span style="color:var(--text-dim)">ESP32</span>
   </div>
 </header>
 <div id="artnet-bar">
@@ -198,10 +199,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   <!-- Cues -->
   <div class="panel area-cues">
     <div class="panel-title">// Cues</div>
-    <div style="display:flex;gap:6px;margin-bottom:10px;">
-      <button class="btn" onclick="exportCues()" style="padding:5px 10px;font-size:10px;">&#8595; EXPORT</button>
-      <label class="btn" style="padding:5px 10px;font-size:10px;cursor:pointer;">&#8593; IMPORT<input type="file" accept=".json" style="display:none" onchange="importCues(this)"></label>
-    </div>
     <div class="cue-list" id="cueList"></div>
     <div class="save-cue-form">
       <input type="text" id="cueName" placeholder="Cue name..." maxlength="30">
@@ -331,9 +328,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 <script>
 var rainbowActive=false,seqSelectedIds=[],sendTimer=null,_editCueId=null,_cDragId=null;
 fetch('/api/status').then(function(r){return r.json();}).then(function(d){if(d.ip)document.getElementById('ipLabel').textContent=d.ip;});
-fetch('/api/mode').then(function(r){return r.json();}).then(function(d){var el=document.getElementById('modeLabel');if(el&&d.mode)el.textContent=d.mode.toUpperCase();}).catch(function(){});
-function exportCues(){var a=document.createElement('a');a.href='/api/cues/export';a.download='cues.json';a.click();}
-function importCues(input){var file=input.files[0];if(!file)return;var r=new FileReader();r.onload=function(e){fetch('/api/cues/import',{method:'POST',headers:{'Content-Type':'application/json'},body:e.target.result}).then(function(r){return r.json();}).then(function(d){toast('Imported: '+d.count+' cues');loadCues();}).catch(function(){toast('Import failed','err');});};r.readAsText(file);input.value='';}
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
 function updatePreview(){var v=getValues(),wr=Math.min(255,v.r+v.w),wg=Math.min(255,v.g+v.w),wb=Math.min(255,v.b+v.w),p=document.getElementById('ledPreview'),hex='rgb('+wr+','+wg+','+wb+')',br=(wr+wg+wb)/3;p.style.background=hex;p.style.boxShadow=br>10?'0 0 '+(20+br/4)+'px '+(8+br/8)+'px '+hex:'none';}

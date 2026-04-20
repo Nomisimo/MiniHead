@@ -1,5 +1,7 @@
 #pragma once
+#define FIRMWARE_VERSION "Modular v4.2 — LittleFS + ArtnetWifi"
 #include "plugin_registry.h"
+#include "plugins/storage/storage.h"
 
 // ── Core Module ───────────────────────────────────────────────────
 // Handles: RGBW LED output, Servo Pan/Tilt, Rainbow effect,
@@ -88,6 +90,8 @@ void applyCommand(const String& cmd) {
 // ── Module lifecycle ──────────────────────────────────────────────
 
 void core_setup() {
+  Serial.println("[MiniHead] " FIRMWARE_VERSION);
+  storage_begin();   // mount LittleFS — must run before any plugin setup()
   strip.begin(); strip.setBrightness(255); setLED(0,0,0,0);
 
   ESP32PWM::allocateTimer(0); ESP32PWM::allocateTimer(1);

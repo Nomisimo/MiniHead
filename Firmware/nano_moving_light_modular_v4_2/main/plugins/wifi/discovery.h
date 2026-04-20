@@ -1,21 +1,13 @@
 #pragma once
 
-// ── Discovery (v4) ────────────────────────────────────────────────
-// Handles: UDP beacon broadcast + receive, mode election,
-//          peer table maintenance, on-the-fly mode switching.
-//
-// Mode logic (v4 — no ESP self-elects as leader):
-//   PC sends beacon with role=LEADER → ESP becomes FOLLOWER
-//   No PC leader heard for LEADER_TIMEOUT_MS → ESP becomes STANDALONE
-//   STANDALONE → own HTTP server starts
-//   FOLLOWER   → HTTP server stops (PC hosts it)
-//
+// ── Discovery Plugin ──────────────────────────────────────────────
+// Handles: UDP beacon broadcast + receive, leader election,
+//          peer table maintenance, on-the-fly role promotion
 // Depends on: core.h (setLED), discovery_globals.h, wifi_control.h
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <Preferences.h>
 #include "discovery_globals.h"
 #include "wifi_control.h"
 
@@ -31,31 +23,31 @@ int  peerCount      = 0;
 // ── Internal ──────────────────────────────────────────────────────
 static WiFiUDP _beaconUDP;
 static unsigned long _lastBeaconSent = 0;
+static bool _electionDone = false;
 static bool _webServerStarted = false;
 
-// ── Preferences ───────────────────────────────────────────────────
+// ── Storage (/discovery.json) ─────────────────────────────────────
+// Schema: {"fixID": 1, "name": "Head 1"}
 
-void discovery_loadFixID() {
-  Preferences p; p.begin("discovery", true);
-  ownFixID = p.getInt("fixID", 0); p.end();
+void discovery_saveSettings() {
+  JsonDocument doc;
+  doc["fixID"] = ownFixID;
+  doc["name"]  = ownName;
+  storage_writeJson("/discovery.json", doc);
 }
 
-void discovery_saveFixID(int id) {
-  ownFixID = id;
-  Preferences p; p.begin("discovery", false);
-  p.putInt("fixID", id); p.end();
+void discovery_loadSettings() {
+  JsonDocument doc;
+  if (storage_readJson("/discovery.json", doc)) {
+    ownFixID = doc["fixID"] | 0;
+    strlcpy(ownName, doc["name"] | "", sizeof(ownName));
+  }
+  // No NVS fallback — clean v4.2 start
 }
 
-void discovery_loadName() {
-  Preferences p; p.begin("discovery", true);
-  strlcpy(ownName, p.getString("name", "").c_str(), sizeof(ownName)); p.end();
-}
-
-void discovery_saveName(const char* name) {
-  strlcpy(ownName, name, sizeof(ownName));
-  Preferences p; p.begin("discovery", false);
-  p.putString("name", ownName); p.end();
-}
+// Thin wrappers so callers in wifi_control.h + udp_control.h are unchanged:
+void discovery_saveFixID(int id)          { ownFixID = id; discovery_saveSettings(); }
+void discovery_saveName(const char* name) { strlcpy(ownName, name, sizeof(ownName)); discovery_saveSettings(); }
 
 // ── Peer helpers ──────────────────────────────────────────────────
 
@@ -65,8 +57,7 @@ Peer* discovery_findPeer(const char* mac) {
   return nullptr;
 }
 
-Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID,
-                             NodeRole role, const char* name = "") {
+Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "") {
   Peer* p = discovery_findPeer(mac);
   if (!p) {
     if (peerCount >= MAX_PEERS) return nullptr;
@@ -90,41 +81,54 @@ void discovery_pruneStale() {
       peers[i].active = false;
 }
 
-bool discovery_pcLeaderAlive() {
+bool discovery_leaderAlive() {
   unsigned long now = millis();
   for (int i = 0; i < peerCount; i++)
     if (peers[i].active && peers[i].role == ROLE_LEADER &&
+        strcmp(peers[i].mac, ownMAC) != 0 &&
         (now - peers[i].lastSeen < LEADER_TIMEOUT_MS)) return true;
   return false;
 }
 
-// ── Mode election ─────────────────────────────────────────────────
-// v4: ESP never becomes LEADER.
-//     FOLLOWER  if a PC leader is alive.
-//     STANDALONE otherwise (runs own HTTP server).
+// ── Election ──────────────────────────────────────────────────────
+// Winner = lowest MAC string (lexicographic).
+// PC always wins — its fake MAC "00:00:00:00:00:PC" sorts below
+// any real ESP32 MAC (digits < letters in ASCII).
 
 void discovery_elect() {
-  bool pcAlive = discovery_pcLeaderAlive();
+  struct Candidate { char mac[18]; };
+  Candidate candidates[MAX_PEERS + 1];
+  int n = 0;
 
-  if (pcAlive && nodeRole != ROLE_FOLLOWER) {
+  strncpy(candidates[n].mac, ownMAC, 17); candidates[n].mac[17] = 0; n++;
+  for (int i = 0; i < peerCount; i++) {
+    if (!peers[i].active) continue;
+    strncpy(candidates[n].mac, peers[i].mac, 17); candidates[n].mac[17] = 0; n++;
+  }
+
+  int winIdx = 0;
+  for (int i = 1; i < n; i++)
+    if (strcmp(candidates[i].mac, candidates[winIdx].mac) < 0) winIdx = i;
+
+  bool iAmLeader = (strcmp(candidates[winIdx].mac, ownMAC) == 0);
+
+  if (iAmLeader && nodeRole != ROLE_LEADER) {
+    nodeRole = ROLE_LEADER;
+    Serial.println("[Discovery] ** I am the LEADER **");
+    if (!_webServerStarted) { wifi_control_setup(); _webServerStarted = true; }
+  } else if (!iAmLeader && nodeRole != ROLE_FOLLOWER) {
     nodeRole = ROLE_FOLLOWER;
     if (_webServerStarted) { wifi_control_stop(); _webServerStarted = false; }
-    Serial.println("[Discovery] PC Leader detected → FOLLOWER");
-
-  } else if (!pcAlive && nodeRole != ROLE_STANDALONE) {
-    nodeRole = ROLE_STANDALONE;
-    if (!_webServerStarted) { wifi_control_setup(); _webServerStarted = true; }
-    Serial.println("[Discovery] No PC Leader → STANDALONE");
+    Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s\n", candidates[winIdx].mac);
   }
 }
 
 // ── Beacon ────────────────────────────────────────────────────────
 
 void discovery_sendBeacon() {
-  const char* roleStr = (nodeRole == ROLE_FOLLOWER) ? "FOLLOWER" : "STANDALONE";
   char pkt[160];
-  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s",
-           ownMAC, ownIP, ownFixID, roleStr, ownName);
+  const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
+  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName);
   _beaconUDP.beginPacket(IPAddress(255,255,255,255), BEACON_PORT);
   _beaconUDP.print(pkt); _beaconUDP.endPacket();
 }
@@ -146,21 +150,19 @@ void discovery_parseBeacon(const char* data, int len) {
   NodeRole    role  = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
   const char* name  = (fi >= 6) ? fields[5] : "";
 
-  if (strcmp(mac, ownMAC) == 0) return;  // ignore own beacon
+  if (strcmp(mac, ownMAC) == 0) return;
 
   discovery_addOrUpdate(mac, ip, fixID, role, name);
-  Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n",
-                mac, ip, fixID, fields[3], name);
+  Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n", mac, ip, fixID, fields[3], name);
 
-  // Immediately re-elect when we hear a PC leader
-  if (role == ROLE_LEADER) discovery_elect();
+  if (nodeRole == ROLE_LEADER && role == ROLE_LEADER)
+    discovery_elect();
 }
 
 // ── Plugin lifecycle ──────────────────────────────────────────────
 
 void discovery_setup() {
-  discovery_loadFixID();
-  discovery_loadName();
+  discovery_loadSettings();
 
   uint8_t mac[6]; WiFi.macAddress(mac);
   snprintf(ownMAC, sizeof(ownMAC), "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -169,8 +171,7 @@ void discovery_setup() {
   Serial.printf("[Discovery] MAC: %s  FixID: %d\n", ownMAC, ownFixID);
   _beaconUDP.begin(BEACON_PORT);
 
-  // Listen 4 s for PC leader before deciding mode
-  Serial.println("[Discovery] Listening 4s for PC leader...");
+  Serial.println("[Discovery] Listening for 4s to find existing nodes...");
   unsigned long listenEnd = millis() + 4000;
   while (millis() < listenEnd) {
     int sz = _beaconUDP.parsePacket();
@@ -178,14 +179,14 @@ void discovery_setup() {
       char buf[128]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
       discovery_parseBeacon(buf, n);
     }
-    // Teal blink while scanning
     bool ledOn = ((millis() / 250) % 2 == 0);
-    setLED(0, ledOn ? 30 : 0, ledOn ? 30 : 0, 0);
+    setLED(ledOn?0:0, ledOn?30:0, ledOn?30:0, 0);
     delay(10);
   }
-  setLED(0, 0, 0, 0);
+  setLED(0,0,0,0);
 
-  discovery_elect();   // → STANDALONE or FOLLOWER
+  discovery_elect();
+  _electionDone = true;
 
   strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
   discovery_sendBeacon();
@@ -193,18 +194,43 @@ void discovery_setup() {
 }
 
 void discovery_loop() {
-  // ── Receive beacons ──────────────────────────────────────────────
   int sz = _beaconUDP.parsePacket();
   if (sz > 0) {
     char buf[128]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
     discovery_parseBeacon(buf, n);
   }
 
-  // ── Prune + re-elect on every loop ───────────────────────────────
+  static unsigned long _leaderGoneAt = 0;
+  static bool          _inHold       = false;
   discovery_pruneStale();
-  discovery_elect();   // idempotent — only acts on actual mode changes
 
-  // ── Send our beacon ──────────────────────────────────────────────
+  if (discovery_leaderAlive()) {
+    _leaderGoneAt = 0; _inHold = false;
+  } else if (nodeRole == ROLE_FOLLOWER) {
+    if (_leaderGoneAt == 0) {
+      _leaderGoneAt = millis(); _inHold = true;
+      Serial.println("[Discovery] Leader signal lost — holding...");
+    }
+    if (_inHold && millis() - _leaderGoneAt > HOLD_DURATION_MS) {
+      _inHold = false; _leaderGoneAt = 0;
+      Serial.println("[Discovery] Hold expired — re-electing...");
+      discovery_elect();
+    }
+  }
+
+  // Safety net: if we think we're LEADER but a peer with lower MAC is also
+  // broadcasting LEADER, yield immediately (handles missed beacon edge cases).
+  if (nodeRole == ROLE_LEADER) {
+    for (int i = 0; i < peerCount; i++) {
+      if (peers[i].active && peers[i].role == ROLE_LEADER &&
+          strcmp(peers[i].mac, ownMAC) < 0) {
+        Serial.printf("[Discovery] Better leader %s active — yielding\n", peers[i].mac);
+        discovery_elect();
+        break;
+      }
+    }
+  }
+
   unsigned long now = millis();
   if (now - _lastBeaconSent >= BEACON_INTERVAL_MS) {
     strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
@@ -212,8 +238,8 @@ void discovery_loop() {
     _lastBeaconSent = now;
   }
 
-  // ── Drive HTTP server + UDP when in STANDALONE mode ──────────────
-  if (_webServerStarted)
+  if (nodeRole == ROLE_LEADER && _webServerStarted)
     wifi_control_loop();
 }
-// Note: wifi.h owns REGISTER_PLUGIN — discovery is NOT separately registered.
+
+REGISTER_PLUGIN(discovery);

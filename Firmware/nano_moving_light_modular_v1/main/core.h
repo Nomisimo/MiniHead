@@ -1,4 +1,5 @@
 #pragma once
+#define FIRMWARE_VERSION "Modular v1"
 
 // ── Core Module ───────────────────────────────────────────────────
 // Handles: RGBW LED output, Servo Pan/Tilt, Rainbow effect,
@@ -81,6 +82,7 @@ void applyCommand(const String& cmd) {
 // ── Module lifecycle ──────────────────────────────────────────────
 
 void core_setup() {
+  Serial.println("[MiniHead] " FIRMWARE_VERSION);
   strip.begin(); strip.setBrightness(255); setLED(0,0,0,0);
 
   ESP32PWM::allocateTimer(0); ESP32PWM::allocateTimer(1);

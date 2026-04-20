@@ -264,9 +264,13 @@ void setupRoutes() {
 
 // ── Setup ─────────────────────────────────────────────────────────
 
+// ── Version ───────────────────────────────────────────────────────
+#define FIRMWARE_VERSION "WiFi v1 — Web Server"
+
 void setup() {
   Serial.begin(115200);
   delay(500);
+  Serial.println("[MiniHead] " FIRMWARE_VERSION);
 
   strip.begin(); strip.setBrightness(255); setLED(0,0,0,0);
 

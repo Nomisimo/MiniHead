@@ -56,21 +56,19 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       "serial"
       "cues"
       "sequencer"
-      "future"
-      "artpatch";
+      "future";
     gap:1px;
     background:var(--border);
   }
   @media(min-width:900px){
     .main{
       grid-template-columns:2fr 1fr;
-      grid-template-rows:auto auto auto auto auto 1fr;
+      grid-template-rows:auto auto auto auto 1fr;
       grid-template-areas:
         "cues       light"
         "sequencer  motion"
         "future     rainbow"
         "future     serial"
-        "future     artpatch"
         "future     .";
       min-height:calc(100vh - 49px);
     }
@@ -81,19 +79,9 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .area-motion    {grid-area:motion;}
   .area-rainbow   {grid-area:rainbow;}
   .area-serial    {grid-area:serial;}
-  .area-artpatch  {grid-area:artpatch;}
   .area-cues      {grid-area:cues;}
   .area-sequencer {grid-area:sequencer;}
   .area-future    {grid-area:future;}
-
-  /* ── Art-Net patch sidebar ── */
-  .ap-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
-  .ap-table th{text-align:left;color:var(--text-dim);font-weight:normal;padding:3px 4px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1px;}
-  .ap-table td{padding:3px 4px;border-bottom:1px solid rgba(42,42,58,0.4);vertical-align:middle;}
-  .ap-table tr:last-child td{border-bottom:none;}
-  .ap-num{width:44px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 3px;font-family:var(--mono);font-size:10px;border-radius:3px;text-align:center;-moz-appearance:textfield;}
-  .ap-num::-webkit-outer-spin-button,.ap-num::-webkit-inner-spin-button{-webkit-appearance:none;}
-  .ap-del{width:20px;height:20px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:10px;line-height:1;padding:0;}
 
   /* ── RGBW Faders ── */
   .faders-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;}
@@ -300,11 +288,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     </div>
   </div>
 
-  <!-- Art-Net Patch sidebar -->
-  <div class="panel area-artpatch col-right" id="artpatch-sidebar-panel">
-    <div class="panel-title">// Art-Net Patch</div>
-    <div id="ap_list"><div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0;">No patches</div></div>
-  </div>
 
 </div>
 <div id="toast"></div>
@@ -374,49 +357,6 @@ function loadModule(url, id) {
 }
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
 loadModule('/plugins/artnet/panel.html','artnet-module-container');
-// ── Art-Net patch sidebar ─────────────────────────────────────────
-var _FIX_HUES=[200,30,120,270,0,60,160,300,45,330];
-function loadArtpatch(){
-  Promise.all([
-    fetch('/api/artnet/patch').then(function(r){return r.json();}),
-    fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];})
-  ]).then(function(res){
-    var patches=res[0],fixtures=res[1];
-    var el=document.getElementById('ap_list');if(!el)return;
-    var active=document.activeElement;if(active&&el.contains(active))return;
-    if(!patches.length){el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:8px 0;">No patches</div>';return;}
-    var fmap={};fixtures.forEach(function(f){fmap[f.id]=f.name||('Fix#'+f.id);});
-    var html='<table class="ap-table"><thead><tr><th></th><th>Fix#</th><th>Name</th><th>Uni</th><th>Addr</th><th></th></tr></thead><tbody>';
-    patches.forEach(function(p){
-      var hue=_FIX_HUES[(p.fixID-1)%_FIX_HUES.length];
-      var col='hsl('+hue+',68%,52%)';
-      html+='<tr>'
-        +'<td><div style="width:8px;height:8px;border-radius:2px;background:'+col+'"></div></td>'
-        +'<td style="color:var(--accent2);font-weight:700;">'+p.fixID+'</td>'
-        +'<td style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(fmap[p.fixID]||('Fix#'+p.fixID))+'</td>'
-        +'<td><input type="number" class="ap-num" value="'+p.universe+'" min="0" max="32767" onchange="ap_update('+p.fixID+',+this.value,null)"></td>'
-        +'<td><input type="number" class="ap-num" style="color:var(--accent);" value="'+p.startAddr+'" min="1" max="512" onchange="ap_update('+p.fixID+',null,+this.value)"></td>'
-        +'<td><button class="ap-del" onclick="ap_del('+p.fixID+')">&#10005;</button></td>'
-        +'</tr>';
-    });
-    html+='</tbody></table>';
-    el.innerHTML=html;
-  }).catch(function(){});
-}
-window.ap_update=function(fixID,uni,addr){
-  fetch('/api/artnet/patch').then(function(r){return r.json();}).then(function(patches){
-    var p=patches.find(function(x){return x.fixID===fixID;});if(!p)return;
-    var data={universe:uni!==null?uni:p.universe,startAddr:addr!==null?addr:p.startAddr};
-    fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
-      .then(function(){loadArtpatch();if(typeof toast==='function')toast('Patch updated');});
-  });
-};
-window.ap_del=function(fixID){
-  fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
-    loadArtpatch();if(typeof toast==='function')toast('Patch removed');
-  });
-};
-loadArtpatch();setInterval(loadArtpatch,3000);
 var _artnetWasActive=false;
 function an_pollStatus(){fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){if(d.active===_artnetWasActive)return;_artnetWasActive=d.active;document.getElementById('artnet-bar').classList.toggle('visible',d.active);document.getElementById('artnet-bar-count').textContent=d.active?d.patchCount+' fixture(s)':'';['.area-light','.area-motion','.area-rainbow','.area-serial','.area-sequencer'].forEach(function(sel){var el=document.querySelector(sel);if(el)el.classList.toggle('artnet-locked',d.active);});}).catch(function(){});}
 setInterval(an_pollStatus,500);

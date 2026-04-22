@@ -591,6 +591,24 @@ def api_artnet_delete(fix_id):
         save_artnet_patches()
     return jsonify({"status": "ok"})
 
+@app.route("/api/artnet/patch", methods=["DELETE"])
+def api_artnet_clear_all():
+    with artnet_patches_lock:
+        removed = len(artnet_patches)
+        artnet_patches.clear()
+        save_artnet_patches()
+    return jsonify({"status": "ok", "removed": removed})
+
+@app.route("/api/artnet/patch/universe/<int:uni>", methods=["DELETE"])
+def api_artnet_clear_universe(uni):
+    with artnet_patches_lock:
+        before = len(artnet_patches)
+        artnet_patches[:] = [p for p in artnet_patches if p["universe"] != uni]
+        removed = before - len(artnet_patches)
+        if removed:
+            save_artnet_patches()
+    return jsonify({"status": "ok", "removed": removed})
+
 @app.route("/api/artnet/patch/bulk", methods=["POST"])
 def api_artnet_bulk():
     data       = request.get_json() or {}

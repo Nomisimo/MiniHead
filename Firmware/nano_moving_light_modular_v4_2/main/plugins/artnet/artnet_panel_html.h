@@ -28,9 +28,9 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   .net-btn{padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:all 0.15s;text-transform:uppercase;touch-action:manipulation;}
   .net-btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08);}
   .net-btn.sm{padding:3px 8px;font-size:10px;}
+  .an-armed-banner{font-family:var(--mono);font-size:10px;color:var(--accent);background:rgba(0,229,255,0.08);border:1px solid var(--accent);border-radius:3px;padding:4px 8px;margin-bottom:8px;display:none;}
+  .an-armed-banner.visible{display:block;}
 </style>
-
-<div class="an-title">// Art-Net Patch</div>
 
 <!-- Bulk patch row -->
 <div class="an-row">
@@ -47,6 +47,17 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   <button class="net-btn primary" onclick="an_bulk()">PATCH</button>
 </div>
 
+<!-- Action row: patch selected + clear -->
+<div class="an-row" style="margin-bottom:12px;">
+  <button class="net-btn primary" onclick="an_patchSelected()">PATCH SELECTED</button>
+  <span style="flex:1;"></span>
+  <button class="net-btn sm" onclick="an_clearUniverse()">CLEAR UNI</button>
+  <button class="net-btn sm" style="color:var(--danger);border-color:var(--danger);" onclick="an_clearAll()">CLEAR ALL</button>
+</div>
+
+<!-- Armed fixture banner -->
+<div class="an-armed-banner" id="an_armedBanner">Click a grid cell to place armed fixture</div>
+
 <!-- Universe grid navigation -->
 <div class="an-uni-nav">
   <span class="an-label">Universe</span>
@@ -62,6 +73,19 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 <!-- Patch table -->
 <div id="an_patchTable"></div>
 
+<!-- Conflict detection modal -->
+<div id="an_conflictModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:800;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:20px;max-width:340px;width:90%;max-height:80vh;overflow-y:auto;">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--danger);letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);">// Conflict Detected</div>
+    <div id="an_conflictMsg" style="font-family:var(--mono);font-size:11px;color:var(--text);margin-bottom:14px;line-height:1.7;white-space:pre-line;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="net-btn" style="color:var(--danger);border-color:var(--danger);" onclick="an_resolveConflict('overwrite')">OVERWRITE</button>
+      <button class="net-btn primary" onclick="an_resolveConflict('merge')">MERGE</button>
+      <button class="net-btn" onclick="an_resolveConflict('cancel')">CANCEL</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   var DMX_FP = 7;
@@ -69,8 +93,11 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   var an_curUni = 0;
   var an_selectedFixID = null;
   var FIX_HUES = [200,30,120,270,0,60,160,300,45,330];
+  var _conflictOverwriteCb = null, _conflictMergeCb = null;
+  var _pendingPatches = null;
 
   function an_fixColor(fixID){ return 'hsl('+FIX_HUES[(fixID-1)%FIX_HUES.length]+',68%,52%)'; }
+  function an_fixColorDim(fixID){ return 'hsla('+FIX_HUES[(fixID-1)%FIX_HUES.length]+',68%,38%,0.35)'; }
 
   function an_load(){
     Promise.all([
@@ -93,13 +120,11 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   function an_renderGrid(){
     var grid = document.getElementById('an_grid');
     grid.innerHTML = '';
-    // Build slot→patch map
     var slotMap = {};
     an_patches.forEach(function(p){
       if(p.universe !== an_curUni) return;
       for(var ch=0; ch<DMX_FP; ch++) slotMap[p.startAddr+ch] = p;
     });
-    // Count patches in this universe for info
     var count = an_patches.filter(function(p){return p.universe===an_curUni;}).length;
     document.getElementById('an_uniInfo').textContent = count ? count+' fixture(s)' : '';
     for(var i=1; i<=512; i++){
@@ -108,10 +133,22 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
       cell.dataset.addr = i;
       var p = slotMap[i];
       if(p){
-        cell.style.background = an_fixColor(p.fixID);
         if(i === p.startAddr){
-          cell.textContent = p.fixID;
+          cell.style.background = an_fixColor(p.fixID);
+          cell.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;line-height:1.2;">'
+            + '<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.85);">'+p.fixID+'</span>'
+            + '<span style="font-size:7px;font-weight:400;color:rgba(0,0,0,0.5);">'+i+'</span>'
+            + '</div>';
+          cell.title = 'Fix#'+p.fixID+' \u2014 Addr '+i;
+        } else {
+          var relCh = i - p.startAddr + 1;
+          cell.style.background = an_fixColorDim(p.fixID);
+          cell.innerHTML = '<span style="font-size:11px;color:rgba(255,255,255,0.7);">'+relCh+'</span>';
+          cell.title = 'Fix#'+p.fixID+' \u2014 Addr '+i+' (ch '+relCh+')';
         }
+      } else {
+        cell.innerHTML = '<span style="font-size:9px;opacity:0.25;color:#fff;">'+i+'</span>';
+        cell.title = 'Addr '+i+' (free)';
       }
       if(an_selectedFixID !== null && p && p.fixID === an_selectedFixID) cell.classList.add('an-pending');
       cell.addEventListener('click', function(){
@@ -127,18 +164,24 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
       return;
     }
     if(addr + DMX_FP - 1 > 512){
-      if(typeof toast==='function') toast('Not enough room — use next universe','err');
+      if(typeof toast==='function') toast('Not enough room \u2014 use next universe','err');
       return;
     }
-    fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fixID:an_selectedFixID,universe:an_curUni,startAddr:addr})
-    }).then(function(r){return r.json();}).then(function(d){
-      if(d.status==='ok'){
-        an_selectedFixID=null;
-        if(typeof toast==='function') toast('Patched Fix#'+an_selectedFixID||'');
-        an_load();
-      } else if(typeof toast==='function') toast(d.message||'Error','err');
-    });
+    var newPatch = [{fixID:an_selectedFixID, universe:an_curUni, startAddr:addr}];
+    var r = an_getBulkResult(newPatch);
+    if(!r.conflicts.length){
+      an_doPatch(an_selectedFixID, an_curUni, addr, function(){ an_selectedFixID=null; an_updateArmBanner(); an_load(); });
+    } else {
+      var msg = 'Fix#'+r.conflicts.join(', Fix#')+' overlaps here.\nOVERWRITE to replace, MERGE to skip.';
+      an_showConflict(msg,
+        function(){
+          an_deleteConflicts(r.conflicts, function(){
+            an_doPatch(an_selectedFixID, an_curUni, addr, function(){ an_selectedFixID=null; an_updateArmBanner(); an_load(); });
+          });
+        },
+        function(){ if(typeof toast==='function') toast('Cancelled — conflict not resolved'); }
+      );
+    }
   }
 
   function an_renderTable(){
@@ -163,7 +206,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
           +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',+this.value,null)"></td>'
         +'<td><input type="number" class="an-num" style="width:44px;color:var(--accent);" value="'+p.startAddr+'" min="1" max="512"'
           +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',null,+this.value)"></td>'
-        +'<td style="color:var(--text-dim);font-size:10px;">'+p.startAddr+'–'+(p.startAddr+DMX_FP-1)+'</td>'
+        +'<td style="color:var(--text-dim);font-size:10px;">'+p.startAddr+'\u2013'+(p.startAddr+DMX_FP-1)+'</td>'
         +'<td><button class="an-del" onclick="an_del(event,'+p.fixID+')">&#10005;</button></td>'
         +'</tr>';
     });
@@ -171,13 +214,149 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     el.innerHTML=html;
   }
 
+  // ── Conflict detection ────────────────────────────────────────────
+
+  function an_getBulkResult(newPatches){
+    var conflicts = [];
+    var safe = [];
+    newPatches.forEach(function(np){
+      var newEnd = np.startAddr + DMX_FP - 1;
+      var hasConflict = false;
+      an_patches.forEach(function(p){
+        if(p.fixID === np.fixID) return;
+        if(p.universe !== np.universe) return;
+        var pEnd = p.startAddr + DMX_FP - 1;
+        if(np.startAddr <= pEnd && newEnd >= p.startAddr){
+          hasConflict = true;
+          if(conflicts.indexOf(p.fixID) < 0) conflicts.push(p.fixID);
+        }
+      });
+      if(!hasConflict) safe.push(np);
+    });
+    return { conflicts: conflicts, safe: safe };
+  }
+
+  function an_buildMsg(total, safe, outOfRange, conflictIDs){
+    var lines = [];
+    if(outOfRange > 0) lines.push(outOfRange+' fixture(s) exceed Uni '+an_curUni+' address space (max 512) — skipped.');
+    if(conflictIDs.length) lines.push('Conflicts with existing: Fix#'+conflictIDs.join(', Fix#'));
+    lines.push('');
+    lines.push('OVERWRITE — remove conflicting patches, place all '+total);
+    lines.push('MERGE     — skip conflicts, place '+safe+' non-conflicting');
+    lines.push('CANCEL    — do nothing');
+    return lines.join('\n');
+  }
+
+  function an_showConflict(msg, overwriteCb, mergeCb){
+    _conflictOverwriteCb = overwriteCb;
+    _conflictMergeCb = mergeCb;
+    document.getElementById('an_conflictMsg').textContent = msg;
+    document.getElementById('an_conflictModal').style.display = 'flex';
+  }
+
+  window.an_resolveConflict = function(choice){
+    document.getElementById('an_conflictModal').style.display = 'none';
+    if(choice==='overwrite' && _conflictOverwriteCb) _conflictOverwriteCb();
+    else if(choice==='merge' && _conflictMergeCb) _conflictMergeCb();
+    _conflictOverwriteCb = null; _conflictMergeCb = null;
+  };
+
+  function an_deleteConflicts(conflictIDs, cb){
+    var pending = conflictIDs.length;
+    if(!pending){ cb(); return; }
+    conflictIDs.forEach(function(fid){
+      fetch('/api/artnet/patch/'+fid, {method:'DELETE'})
+        .then(function(){ if(--pending===0) cb(); })
+        .catch(function(){ if(--pending===0) cb(); });
+    });
+  }
+
+  function an_doPatch(fixID, uni, addr, cb){
+    fetch('/api/artnet/patch', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fixID:fixID, universe:uni, startAddr:addr})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){ if(typeof toast==='function') toast('Fix#'+fixID+' patched \u2192 Uni '+uni+' Addr '+addr); if(cb)cb(); }
+      else if(typeof toast==='function') toast(d.message||'Error','err');
+    });
+  }
+
+  function an_executeBatch(patches, msg){
+    var pending = patches.length;
+    if(!pending){ if(typeof toast==='function') toast('Nothing to patch'); return; }
+    patches.forEach(function(p){
+      fetch('/api/artnet/patch', {method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({fixID:p.fixID, universe:p.universe, startAddr:p.startAddr})
+      }).then(function(){
+        if(--pending===0){
+          if(typeof toast==='function') toast(msg);
+          an_gotoUniverse(patches[0].universe);
+          an_load();
+        }
+      }).catch(function(){ if(--pending===0){ an_load(); } });
+    });
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────
+
+  window.an_patchSelected = function(){
+    var ids = (typeof nh_getSelectedFixIDs==='function') ? nh_getSelectedFixIDs() : [];
+    if(!ids.length){ if(typeof toast==='function') toast('No heads selected in Network panel','err'); return; }
+    var uni  = parseInt(document.getElementById('an_bulkUni').value)  || 0;
+    var addr = parseInt(document.getElementById('an_bulkAddr').value) || 1;
+    var inRange=[], outOfRange=0;
+    ids.forEach(function(fixID, i){
+      var a = addr + i * DMX_FP;
+      if(a + DMX_FP - 1 > 512){ outOfRange++; }
+      else { inRange.push({fixID:fixID, universe:uni, startAddr:a}); }
+    });
+    if(!inRange.length){ if(typeof toast==='function') toast('No room in universe '+uni,'err'); return; }
+    var r = an_getBulkResult(inRange);
+    if(!r.conflicts.length && !outOfRange){
+      an_executeBatch(inRange, 'Patched '+inRange.length+' fixture(s)');
+      return;
+    }
+    var msg = an_buildMsg(inRange.length, r.safe.length, outOfRange, r.conflicts);
+    an_showConflict(msg,
+      function(){ an_deleteConflicts(r.conflicts, function(){ an_executeBatch(inRange, 'Patched '+inRange.length+' fixture(s)'); }); },
+      function(){ an_executeBatch(r.safe, 'Merged: patched '+r.safe.length+' fixture(s)'); }
+    );
+  };
+
+  window.an_clearUniverse = function(){
+    fetch('/api/artnet/patch/universe/'+an_curUni, {method:'DELETE'})
+      .then(function(r){return r.json();})
+      .then(function(d){ if(typeof toast==='function') toast('Universe '+an_curUni+' cleared ('+(d.removed||0)+' patch(es))'); an_load(); })
+      .catch(function(){ if(typeof toast==='function') toast('Clear failed','err'); });
+  };
+
+  window.an_clearAll = function(){
+    if(!an_patches.length){ if(typeof toast==='function') toast('Nothing to clear'); return; }
+    fetch('/api/artnet/patch', {method:'DELETE'})
+      .then(function(r){return r.json();})
+      .then(function(d){ if(typeof toast==='function') toast('All patches cleared ('+(d.removed||0)+')'); an_load(); })
+      .catch(function(){ if(typeof toast==='function') toast('Clear failed','err'); });
+  };
+
+  // ── Existing actions ──────────────────────────────────────────────
+
+  function an_updateArmBanner(){
+    var banner = document.getElementById('an_armedBanner');
+    if(!banner) return;
+    if(an_selectedFixID !== null){
+      banner.textContent = 'Fix#'+an_selectedFixID+' armed \u2014 click a grid cell to place';
+      banner.classList.add('visible');
+    } else {
+      banner.classList.remove('visible');
+    }
+  }
+
   window.an_selectFix=function(fixID){
     an_selectedFixID = (an_selectedFixID===fixID) ? null : fixID;
-    // Jump grid to the universe of this fixture if already patched
     var p = an_patches.find(function(x){return x.fixID===fixID;});
     if(p && an_selectedFixID!==null) an_gotoUniverse(p.universe);
     else { an_renderGrid(); an_renderTable(); }
-    if(typeof toast==='function' && an_selectedFixID!==null) toast('Fix#'+fixID+' selected — click a grid cell to patch');
+    an_updateArmBanner();
+    if(typeof toast==='function' && an_selectedFixID!==null) toast('Fix#'+fixID+' armed \u2014 click a grid cell to place');
   };
 
   window.an_updatePatch=function(fixID, uni, addr){
@@ -200,7 +379,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     e.stopPropagation();
     fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
       if(typeof toast==='function') toast('Patch removed');
-      if(an_selectedFixID===fixID) an_selectedFixID=null;
+      if(an_selectedFixID===fixID){ an_selectedFixID=null; an_updateArmBanner(); }
       an_load();
     });
   };

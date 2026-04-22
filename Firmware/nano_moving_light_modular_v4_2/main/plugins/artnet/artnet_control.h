@@ -210,6 +210,31 @@ void handleBulkArtnetPatch() {
   sendJson(200, "{\"status\":\"ok\",\"count\":" + String(patched) + "}");
 }
 
+// ── Clear all patches ─────────────────────────────────────────────
+void handleClearAllArtnetPatches() {
+  int removed = artnetPatchCount;
+  artnetPatchCount = 0;
+  artnet_savePatches();
+  sendJson(200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
+}
+
+// ── Clear patches for one universe ───────────────────────────────
+void handleClearUniverseArtnetPatches() {
+  String path = server.uri();
+  // path: /api/artnet/patch/universe/<uni>
+  int uni = path.substring(path.lastIndexOf('/') + 1).toInt();
+  int removed = 0, newCount = 0;
+  for (int i = 0; i < artnetPatchCount; i++) {
+    if ((int)artnetPatches[i].universe != uni)
+      artnetPatches[newCount++] = artnetPatches[i];
+    else
+      removed++;
+  }
+  artnetPatchCount = newCount;
+  if (removed) artnet_savePatches();
+  sendJson(200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
+}
+
 // ── Setup (called from wifi_control_setup) ───────────────────────
 void artnet_control_setup() {
   artnet_loadPatches();

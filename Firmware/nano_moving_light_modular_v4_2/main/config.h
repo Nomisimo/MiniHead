@@ -9,8 +9,8 @@
 #include "core.h"
 
 // ── WiFi credentials ──────────────────────────────────────────────
-#define WIFI_SSID "Mr_Pancake"
-#define WIFI_PASSWORD "nomnomnom"
+#define WIFI_SSID "DastutWlan"
+#define WIFI_PASSWORD "pancakefactory12345678!"
 
 // ── Plugins ───────────────────────────────────────────────────────
 // To disable a plugin: comment out its #include line.

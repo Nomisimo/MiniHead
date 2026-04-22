@@ -83,5 +83,35 @@
       21
     ],
     "targetCount": 1
+  },
+  {
+    "id": 1776762065206,
+    "name": "Cue",
+    "r": 0,
+    "g": 0,
+    "b": 0,
+    "w": 0,
+    "pan": 90,
+    "tilt": 90,
+    "fixTargets": [
+      101,
+      102
+    ],
+    "targetCount": 2
+  },
+  {
+    "id": 1776762076478,
+    "name": "cue 2",
+    "r": 0,
+    "g": 0,
+    "b": 0,
+    "w": 0,
+    "pan": 90,
+    "tilt": 90,
+    "fixTargets": [
+      101,
+      102
+    ],
+    "targetCount": 2
   }
 ]

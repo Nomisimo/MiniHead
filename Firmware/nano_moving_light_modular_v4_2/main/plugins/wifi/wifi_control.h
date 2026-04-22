@@ -389,10 +389,11 @@ void setupRoutes() {
     server.send_P(200,"text/html", ARTNET_PANEL_HTML);
   });
   // Art-Net API — register /bulk before / so more-specific path wins
-  server.on("/api/artnet/status",           HTTP_GET,  handleArtnetStatus);
-  server.on("/api/artnet/patch",            HTTP_GET,  handleGetArtnetPatch);
-  server.on("/api/artnet/patch/bulk",       HTTP_POST, handleBulkArtnetPatch);
-  server.on("/api/artnet/patch",            HTTP_POST, handlePostArtnetPatch);
+  server.on("/api/artnet/status",           HTTP_GET,    handleArtnetStatus);
+  server.on("/api/artnet/patch",            HTTP_GET,    handleGetArtnetPatch);
+  server.on("/api/artnet/patch/bulk",       HTTP_POST,   handleBulkArtnetPatch);
+  server.on("/api/artnet/patch",            HTTP_POST,   handlePostArtnetPatch);
+  server.on("/api/artnet/patch",            HTTP_DELETE, handleClearAllArtnetPatches);
   server.on("/api/status",            HTTP_GET,  handleStatus);
   server.on("/api/ports",             HTTP_GET,  handlePorts);
   server.on("/api/connect",           HTTP_POST, handleConnect);
@@ -419,6 +420,8 @@ void setupRoutes() {
       if (path.endsWith("/targets") && server.method()==HTTP_PUT)  { handleUpdateCueTargets(); return; }
       if (server.method()==HTTP_DELETE) { handleDeleteCue(); return; }
     }
+    if (path.startsWith("/api/artnet/patch/universe/") && server.method()==HTTP_DELETE)
+      { handleClearUniverseArtnetPatches(); return; }
     if (path.startsWith("/api/artnet/patch/") && server.method()==HTTP_DELETE)
       { handleDeleteArtnetPatch(); return; }
     if (path.startsWith("/api/artnet/patch/") && server.method()==HTTP_PUT)

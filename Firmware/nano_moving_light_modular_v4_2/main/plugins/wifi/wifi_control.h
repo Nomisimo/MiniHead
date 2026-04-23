@@ -9,6 +9,7 @@
 
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
+#include "lwip/tcpip.h"   // LOCK_TCPIP_CORE / UNLOCK_TCPIP_CORE for IDF 5.x
 #include <ArduinoJson.h>
 #include "html_page.h"
 #include "core_globals.h"
@@ -539,7 +540,11 @@ void wifi_control_setup() {
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
   setupRoutes();
   if (!_serverStarted) {
+    // ESP-IDF 5.x: tcp_alloc() requires the TCPIP core lock.
+    // The Arduino loopTask doesn't hold it — acquire it explicitly.
+    LOCK_TCPIP_CORE();
     server.begin();
+    UNLOCK_TCPIP_CORE();
     _serverStarted = true;
     Serial.println("[WiFi] Async server started");
   } else {

@@ -3,9 +3,9 @@
 // ── Art-Net Control ───────────────────────────────────────────────
 // HTTP API routes for Art-Net patch management.
 // LittleFS JSON storage for patch records (/artnet.json).
-// Helpers for leader→follower UDP patch push.
 //
-// Included from wifi_control.h, which owns `server` and `prefs`.
+// Included from wifi_control.h, which owns `server`, `sendJson`,
+// `_getBody`, and `_bodyAccumulator`.
 // ─────────────────────────────────────────────────────────────────
 
 #include "artnet_globals.h"
@@ -78,69 +78,66 @@ String artnetPatchToJson(const ArtnetPatch& p) {
 
 // ── HTTP handlers ─────────────────────────────────────────────────
 
-void handleArtnetStatus() {
+void handleArtnetStatus(AsyncWebServerRequest* req) {
   String json = "{\"active\":";
   json += artnetActive ? "true" : "false";
   json += ",\"patchCount\":" + String(artnetPatchCount) + "}";
-  sendJson(200, json);
+  sendJson(req, 200, json);
 }
 
-void handleGetArtnetPatch() {
+void handleGetArtnetPatch(AsyncWebServerRequest* req) {
   String json = "[";
   for (int i = 0; i < artnetPatchCount; i++) {
     if (i > 0) json += ",";
     json += artnetPatchToJson(artnetPatches[i]);
   }
   json += "]";
-  sendJson(200, json);
+  sendJson(req, 200, json);
 }
 
-void handlePostArtnetPatch() {
+void handlePostArtnetPatch(AsyncWebServerRequest* req) {
   if (artnetPatchCount >= MAX_PATCHES) {
-    sendJson(500, "{\"status\":\"error\",\"message\":\"Max patches reached\"}");
+    sendJson(req, 500, "{\"status\":\"error\",\"message\":\"Max patches reached\"}");
     return;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, server.arg("plain"))) {
-    sendJson(400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}");
+  if (deserializeJson(doc, _getBody(req))) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}");
     return;
   }
   int fixID     = doc["fixID"]     | 0;
   int universe  = doc["universe"]  | 0;
   int startAddr = doc["startAddr"] | 1;
   if (fixID <= 0 || startAddr < 1 || startAddr + DMX_FOOTPRINT - 1 > DMX_CHANNELS) {
-    sendJson(400, "{\"status\":\"error\",\"message\":\"Invalid fixID or startAddr\"}");
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid fixID or startAddr\"}");
     return;
   }
   artnet_upsertPatch(fixID, (uint16_t)universe, (uint16_t)startAddr);
-  // Push to follower peer if applicable
   for (int i = 0; i < peerCount; i++) {
     if (peers[i].active && peers[i].fixID == fixID) {
       artnet_pushPatchToFollower(peers[i].ip, peers[i].mac, fixID, universe, startAddr);
       break;
     }
   }
-  sendJson(200, "{\"status\":\"ok\"}");
+  sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
-// PUT /api/artnet/patch/:fixID  — update universe / startAddr of existing patch
-void handleUpdateArtnetPatch() {
-  String path = server.uri();
+// PUT /api/artnet/patch/<fixID>  — update universe / startAddr of existing patch
+void handleUpdateArtnetPatch(AsyncWebServerRequest* req) {
+  String path = req->url();
   int fixID = path.substring(path.lastIndexOf('/') + 1).toInt();
   JsonDocument doc;
-  if (deserializeJson(doc, server.arg("plain"))) {
-    sendJson(400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return;
+  if (deserializeJson(doc, _getBody(req))) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return;
   }
   int universe  = doc["universe"]  | -1;
   int startAddr = doc["startAddr"] | -1;
-  // Find existing patch
   for (int i = 0; i < artnetPatchCount; i++) {
     if (artnetPatches[i].fixID == fixID) {
       if (universe  >= 0) artnetPatches[i].universe  = (uint16_t)universe;
       if (startAddr >= 1 && startAddr + DMX_FOOTPRINT - 1 <= DMX_CHANNELS)
         artnetPatches[i].startAddr = (uint16_t)startAddr;
       artnet_savePatches();
-      // Push to follower if applicable
       for (int j = 0; j < peerCount; j++) {
         if (peers[j].active && peers[j].fixID == fixID) {
           artnet_pushPatchToFollower(peers[j].ip, peers[j].mac, fixID,
@@ -148,14 +145,14 @@ void handleUpdateArtnetPatch() {
           break;
         }
       }
-      sendJson(200, "{\"status\":\"ok\"}"); return;
+      sendJson(req, 200, "{\"status\":\"ok\"}"); return;
     }
   }
-  sendJson(404, "{\"status\":\"error\",\"message\":\"Patch not found\"}");
+  sendJson(req, 404, "{\"status\":\"error\",\"message\":\"Patch not found\"}");
 }
 
-void handleDeleteArtnetPatch() {
-  String path = server.uri();
+void handleDeleteArtnetPatch(AsyncWebServerRequest* req) {
+  String path = req->url();
   int fixID = path.substring(path.lastIndexOf('/') + 1).toInt();
   for (int i = 0; i < artnetPatchCount; i++) {
     if (artnetPatches[i].fixID == fixID) {
@@ -163,17 +160,17 @@ void handleDeleteArtnetPatch() {
         artnetPatches[j] = artnetPatches[j + 1];
       artnetPatchCount--;
       artnet_savePatches();
-      sendJson(200, "{\"status\":\"ok\"}");
+      sendJson(req, 200, "{\"status\":\"ok\"}");
       return;
     }
   }
-  sendJson(404, "{\"status\":\"error\",\"message\":\"Not found\"}");
+  sendJson(req, 404, "{\"status\":\"error\",\"message\":\"Not found\"}");
 }
 
-void handleBulkArtnetPatch() {
+void handleBulkArtnetPatch(AsyncWebServerRequest* req) {
   JsonDocument doc;
-  if (deserializeJson(doc, server.arg("plain"))) {
-    sendJson(400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}");
+  if (deserializeJson(doc, _getBody(req))) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}");
     return;
   }
   int universe   = doc["universe"]   | 0;
@@ -182,23 +179,20 @@ void handleBulkArtnetPatch() {
   int firstFixID = doc["firstFixID"] | 1;
 
   if (count <= 0 || firstFixID <= 0 || startAddr < 1) {
-    sendJson(400, "{\"status\":\"error\",\"message\":\"Invalid parameters\"}");
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid parameters\"}");
     return;
   }
-
   int patched = 0;
   for (int n = 0; n < count; n++) {
     int fixID = firstFixID + n;
     int addr  = startAddr + n * DMX_FOOTPRINT;
     int uni   = universe;
-    // Auto-overflow to next universe when address exceeds 512
     while (addr + DMX_FOOTPRINT - 1 > DMX_CHANNELS) {
       uni++;
       addr -= DMX_CHANNELS;
     }
     if (addr < 1) addr = 1;
     artnet_upsertPatch(fixID, (uint16_t)uni, (uint16_t)addr);
-    // Push to follower if applicable
     for (int i = 0; i < peerCount; i++) {
       if (peers[i].active && peers[i].fixID == fixID) {
         artnet_pushPatchToFollower(peers[i].ip, peers[i].mac, fixID, uni, addr);
@@ -207,20 +201,20 @@ void handleBulkArtnetPatch() {
     }
     patched++;
   }
-  sendJson(200, "{\"status\":\"ok\",\"count\":" + String(patched) + "}");
+  sendJson(req, 200, "{\"status\":\"ok\",\"count\":" + String(patched) + "}");
 }
 
 // ── Clear all patches ─────────────────────────────────────────────
-void handleClearAllArtnetPatches() {
+void handleClearAllArtnetPatches(AsyncWebServerRequest* req) {
   int removed = artnetPatchCount;
   artnetPatchCount = 0;
   artnet_savePatches();
-  sendJson(200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
+  sendJson(req, 200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
 }
 
 // ── Clear patches for one universe ───────────────────────────────
-void handleClearUniverseArtnetPatches() {
-  String path = server.uri();
+void handleClearUniverseArtnetPatches(AsyncWebServerRequest* req) {
+  String path = req->url();
   // path: /api/artnet/patch/universe/<uni>
   int uni = path.substring(path.lastIndexOf('/') + 1).toInt();
   int removed = 0, newCount = 0;
@@ -232,7 +226,7 @@ void handleClearUniverseArtnetPatches() {
   }
   artnetPatchCount = newCount;
   if (removed) artnet_savePatches();
-  sendJson(200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
+  sendJson(req, 200, "{\"status\":\"ok\",\"removed\":" + String(removed) + "}");
 }
 
 // ── Setup (called from wifi_control_setup) ───────────────────────

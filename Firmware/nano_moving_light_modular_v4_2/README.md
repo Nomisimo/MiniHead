@@ -52,8 +52,13 @@ main/
 | ESP32Servo | Kevin Harrington | Library Manager |
 | ArduinoJson | Benoit Blanchon | Library Manager |
 | ArtnetWifi | rstephan | Library Manager |
-| **ESPAsyncWebServer** | me-no-dev | Library Manager |
-| **AsyncTCP** | me-no-dev | Library Manager |
+| **ESPAsyncWebServer** | mathieucarbou | ZIP-Install (siehe unten) |
+| **AsyncTCP** | mathieucarbou | ZIP-Install (siehe unten) |
+
+> **Hinweis ESPAsyncWebServer:** Nicht über den Library Manager installieren — nur die mathieucarbou-Fork ist mit ESP32 Arduino Core 3.x / IDF 5.x kompatibel. Als ZIP manuell installieren:
+> 1. [AsyncTCP ZIP](https://github.com/mathieucarbou/AsyncTCP/archive/refs/heads/main.zip) herunterladen
+> 2. [ESPAsyncWebServer ZIP](https://github.com/mathieucarbou/ESPAsyncWebServer/archive/refs/heads/main.zip) herunterladen
+> 3. Arduino IDE: **Sketch → Include Library → Add .ZIP Library** → erst AsyncTCP, dann ESPAsyncWebServer
 
 ### 2. Partition Scheme setzen
 

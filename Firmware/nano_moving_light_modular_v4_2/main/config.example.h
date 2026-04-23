@@ -12,9 +12,16 @@
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
 
-// ── WiFi credentials — CHANGE THESE ──────────────────────────────
-#define WIFI_SSID     "YourNetworkName"
-#define WIFI_PASSWORD "YourPassword"
+// ── WiFi network list ─────────────────────────────────────────────
+// Add all known networks. The ESP tries the last-connected first,
+// then scans for any visible network from this list.
+// Last-connected SSID is persisted in /wifi_last.json on LittleFS.
+struct WifiCredential { const char* ssid; const char* password; };
+static const WifiCredential WIFI_NETWORKS[] = {
+  { "YourPrimaryNetwork",  "YourPassword"   },
+  // { "BackupNetwork",    "BackupPassword" },
+};
+static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
 
 // ── Plugins ───────────────────────────────────────────────────────
 // To disable a plugin: comment out its #include line.

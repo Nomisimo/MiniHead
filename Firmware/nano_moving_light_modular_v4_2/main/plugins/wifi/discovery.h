@@ -129,7 +129,13 @@ void discovery_sendBeacon() {
   char pkt[160];
   const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
   snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName);
-  _beaconUDP.beginPacket(IPAddress(255,255,255,255), BEACON_PORT);
+  // Use directed subnet broadcast (e.g. 192.168.178.255) instead of
+  // 255.255.255.255 — Fritz!Box and similar routers don't reliably
+  // forward limited broadcasts across WiFi→Ethernet boundaries.
+  IPAddress _ip = WiFi.localIP(), _mask = WiFi.subnetMask();
+  IPAddress _bcast(_ip[0]|(uint8_t)~_mask[0], _ip[1]|(uint8_t)~_mask[1],
+                   _ip[2]|(uint8_t)~_mask[2], _ip[3]|(uint8_t)~_mask[3]);
+  _beaconUDP.beginPacket(_bcast, BEACON_PORT);
   _beaconUDP.print(pkt); _beaconUDP.endPacket();
 }
 

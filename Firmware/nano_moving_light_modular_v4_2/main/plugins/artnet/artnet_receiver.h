@@ -12,7 +12,7 @@
 // Depends on: artnet_globals.h, core.h, discovery_globals.h
 // ─────────────────────────────────────────────────────────────────
 
-#include <AsyncUDP.h>
+#include <WiFiUdp.h>
 #include "artnet_globals.h"
 #include "../../core.h"
 #include "../wifi/discovery_globals.h"
@@ -24,7 +24,7 @@ int           artnetPatchCount  = 0;
 bool          artnetActive      = false;
 unsigned long artnetLastPacket  = 0;
 
-static AsyncUDP _artnetUdp;
+static WiFiUDP _artnetUdp;
 
 // ── Forward declarations ──────────────────────────────────────────
 void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
@@ -147,10 +147,9 @@ static void artnet_parsePacket(uint8_t* data, size_t len) {
 // ── Plugin lifecycle ──────────────────────────────────────────────
 
 void artnet_receiver_setup() {
-  if (_artnetUdp.listen(ARTNET_PORT)) {
-    _artnetUdp.onPacket([](AsyncUDPPacket packet) {
-      artnet_parsePacket(packet.data(), packet.length());
-    });
+  // Use WiFiUDP polling — same pattern as udp_control.h (port 4211),
+  // confirmed working on ESP32-C3 / Arduino Core 3.x / IDF 5.x.
+  if (_artnetUdp.begin(ARTNET_PORT)) {
     Serial.printf("[ArtNet] Listening on port %d\n", ARTNET_PORT);
   } else {
     Serial.printf("[ArtNet] ERROR: failed to bind port %d\n", ARTNET_PORT);
@@ -158,8 +157,12 @@ void artnet_receiver_setup() {
 }
 
 void artnet_receiver_loop() {
-  // AsyncUDP is callback-based — no polling needed.
-  // Just watch for timeout.
+  int sz = _artnetUdp.parsePacket();
+  if (sz > 0) {
+    static uint8_t buf[530];   // 18-byte Art-Net header + 512 DMX channels
+    int n = _artnetUdp.read(buf, sizeof(buf));
+    if (n > 0) artnet_parsePacket(buf, (size_t)n);
+  }
   if (artnetActive && (millis() - artnetLastPacket > ARTNET_TIMEOUT_MS)) {
     artnetActive = false;
     Serial.println("[ArtNet] Timeout — inactive");

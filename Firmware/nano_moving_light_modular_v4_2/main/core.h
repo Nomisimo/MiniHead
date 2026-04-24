@@ -1,5 +1,5 @@
 #pragma once
-#define FIRMWARE_VERSION "Modular v4.2 — LittleFS + ArtnetWifi"
+#define FIRMWARE_VERSION "Modular v4.2 — LittleFS + AsyncUDP"
 #include "plugin_registry.h"
 #include "plugins/storage/storage.h"
 

@@ -8,7 +8,7 @@ Sauberer Neustart auf Basis von v3. NVS-Rohbinärdaten werden durch LittleFS JSO
 - **LittleFS JSON-Speicher** statt NVS — alle Daten in lesbaren `.json`-Dateien
 - **ESPAsyncWebServer** statt synchronem WebServer — HTTP läuft auf dem WiFi-Task, blockiert nie den Arduino-Loop → Servo-Befehle reagieren sofort
 - **WiFi-Multi-Network-Liste** in `config.h` — letztes verbundenes Netzwerk wird zuerst versucht, Fallback auf weitere Einträge
-- **ArtnetWifi-Bibliothek** statt manuellem UDP-Parser
+- **AsyncUDP** (built-in) statt ArtnetWifi-Bibliothek — kein externer UDP-Parser nötig
 - **Zentrales `storage.h`:** einheitliche `readJson`/`writeJson`-Helfer für alle Plugins
 - **Temporäres Profiler-Plugin** für Serial-Diagnose (Loop-Freq, Heap, FreeRTOS-Tasks)
 
@@ -38,7 +38,7 @@ main/
     │   ├── discovery.h        # /discovery.json statt NVS
     │   └── wifi_control.h     # ESPAsyncWebServer, /cues.json statt NVS
     └── artnet/
-        ├── artnet_receiver.h  # ArtnetWifi-Bibliothek
+        ├── artnet_receiver.h  # AsyncUDP — built-in, no library needed
         └── artnet_control.h   # /artnet.json statt NVS
 ```
 
@@ -51,7 +51,7 @@ main/
 | Adafruit NeoPixel | Adafruit | Library Manager |
 | ESP32Servo | Kevin Harrington | Library Manager |
 | ArduinoJson | Benoit Blanchon | Library Manager |
-| ArtnetWifi | rstephan | Library Manager |
+| ~~ArtnetWifi~~ | — | nicht mehr benötigt (AsyncUDP ist built-in) |
 | **ESPAsyncWebServer** | mathieucarbou | ZIP-Install (siehe unten) |
 | **AsyncTCP** | mathieucarbou | ZIP-Install (siehe unten) |
 
@@ -127,7 +127,7 @@ Nach der Diagnose: Zeile entfernen, Ordner `plugins/profiler/` löschen.
 | Speicher | NVS (Binary) | LittleFS (JSON) |
 | Daten-Inspektion | nur per Debugger | direkt lesbare JSON-Dateien |
 | Struct-Änderungen | Version-Bump + Datenverlust | JSON-Feld einfach ergänzen |
-| Art-Net-Parser | manuell (30 Zeilen) | ArtnetWifi-Bibliothek |
+| Art-Net-Parser | manuell (30 Zeilen) | AsyncUDP built-in (kein externer Parser) |
 | HTTP-Server | WebServer (blocking) | ESPAsyncWebServer (non-blocking) |
 | Servo-Latenz | 50–200 ms (blockiert durch HTML-Responses) | < 5 ms (läuft auf WiFi-Task) |
 | WiFi | einzelnes Netzwerk hardcoded | Liste + last-connected Priorität |

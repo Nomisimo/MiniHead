@@ -9,7 +9,7 @@
 
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
-#include "lwip/tcpip.h"   // LOCK_TCPIP_CORE / UNLOCK_TCPIP_CORE for IDF 5.x
+#include "esp_netif.h"    // esp_netif_tcpip_exec() for IDF 5.x lwIP context
 #include <ArduinoJson.h>
 #include "html_page.h"
 #include "core_globals.h"
@@ -540,11 +540,15 @@ void wifi_control_setup() {
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
   setupRoutes();
   if (!_serverStarted) {
-    // ESP-IDF 5.x: tcp_alloc() requires the TCPIP core lock.
-    // The Arduino loopTask doesn't hold it — acquire it explicitly.
-    LOCK_TCPIP_CORE();
-    server.begin();
-    UNLOCK_TCPIP_CORE();
+    // ESP-IDF 5.x: tcp_alloc() requires the TCPIP core lock, which the
+    // Arduino loopTask does not hold. esp_netif_tcpip_exec() runs the
+    // callback directly inside the lwIP task (which already holds the lock).
+    // This is the correct IDF 5.x way — avoids the deadlock that
+    // LOCK_TCPIP_CORE() causes when AsyncTCP posts internal callbacks.
+    esp_netif_tcpip_exec([](void* ctx) -> esp_err_t {
+      ((AsyncWebServer*)ctx)->begin();
+      return ESP_OK;
+    }, &server);
     _serverStarted = true;
     Serial.println("[WiFi] Async server started");
   } else {

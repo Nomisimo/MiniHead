@@ -50,9 +50,14 @@ def get_own_ip():
     except Exception:
         return "127.0.0.1"
 
-OWN_MAC  = get_own_mac()
-OWN_IP   = get_own_ip()
-OWN_ROLE = "LEADER"
+def get_broadcast_addr(ip: str) -> str:
+    """Derive subnet broadcast from IP — assumes /24."""
+    return ip.rsplit(".", 1)[0] + ".255"
+
+OWN_MAC        = get_own_mac()
+OWN_IP         = get_own_ip()
+OWN_ROLE       = "LEADER"
+BROADCAST_ADDR = get_broadcast_addr(OWN_IP)
 
 # ── Peer table ────────────────────────────────────────────────────
 peers_lock = threading.Lock()
@@ -75,6 +80,8 @@ def update_peer(mac, ip, fix_id, role, name=""):
     fid = int(fix_id) if str(fix_id).isdigit() else 0
     if fid > 0:
         _fixture_auto_register(fid, name, mac)
+        if is_new:
+            _push_patch_on_join(fid, ip, mac)
 
 def expire_peers():
     now = time.time()
@@ -162,6 +169,25 @@ def save_artnet_patches():
     with open(ARTNET_PATCH_FILE, "w") as f:
         json.dump(artnet_patches, f, indent=2)
 
+# ── Art-Net patch push helpers ────────────────────────────────────
+
+def push_patch_to_esp(fix_id: int, universe: int, start_addr: int):
+    """Send SETPATCH UDP to the ESP that owns this fixID (if online)."""
+    for p in get_peers():
+        if int(p.get("fixID", 0)) == fix_id:
+            udp_send(p["ip"], p["mac"], f"SETPATCH:{fix_id},{universe},{start_addr}")
+            print(f"[ArtNet] Pushed SETPATCH:{fix_id},{universe},{start_addr} → {p['ip']}")
+            return
+    print(f"[ArtNet] Fix#{fix_id} not online — patch stored locally only")
+
+def _push_patch_on_join(fid: int, ip: str, mac: str):
+    """When a peer joins, push its stored patch so it has correct Art-Net mapping."""
+    with artnet_patches_lock:
+        patch = next((p for p in artnet_patches if p["fixID"] == fid), None)
+    if patch:
+        udp_send(ip, mac, f"SETPATCH:{fid},{patch['universe']},{patch['startAddr']}")
+        print(f"[ArtNet] Join-sync SETPATCH:{fid},{patch['universe']},{patch['startAddr']} → {ip}")
+
 # ── UDP beacon sender ─────────────────────────────────────────────
 def beacon_sender():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -169,7 +195,7 @@ def beacon_sender():
     while True:
         pkt = f"MINIHEAD|{OWN_MAC}|{OWN_IP}|{OWN_FIX_ID}|LEADER|PC"
         try:
-            sock.sendto(pkt.encode(), ("<broadcast>", BEACON_PORT))
+            sock.sendto(pkt.encode(), (BROADCAST_ADDR, BEACON_PORT))
         except Exception as e:
             print(f"[Beacon] Send error: {e}")
         expire_peers()
@@ -565,6 +591,7 @@ def api_artnet_add():
         artnet_patches.append({"fixID": fix_id, "universe": universe, "startAddr": start_addr})
         artnet_patches.sort(key=lambda p: (p["universe"], p["startAddr"]))
         save_artnet_patches()
+    push_patch_to_esp(fix_id, universe, start_addr)
     return jsonify({"status": "ok"})
 
 @app.route("/api/artnet/patch/<int:fix_id>", methods=["PUT"])
@@ -579,6 +606,8 @@ def api_artnet_update(fix_id):
         if "startAddr" in data:
             p["startAddr"] = int(data["startAddr"])
         save_artnet_patches()
+        uni, addr = p["universe"], p["startAddr"]
+    push_patch_to_esp(fix_id, uni, addr)
     return jsonify({"status": "ok"})
 
 @app.route("/api/artnet/patch/<int:fix_id>", methods=["DELETE"])
@@ -621,14 +650,18 @@ def api_artnet_bulk():
         return jsonify({"status": "error", "message": "count must be 1–32"}), 400
     if start_addr + count * DMX_FP - 1 > 512:
         return jsonify({"status": "error", "message": "Addresses exceed 512"}), 400
+    bulk = []
     with artnet_patches_lock:
         for i in range(count):
             fix_id = first_fix + i
             addr   = start_addr + i * DMX_FP
             artnet_patches[:] = [p for p in artnet_patches if p["fixID"] != fix_id]
             artnet_patches.append({"fixID": fix_id, "universe": universe, "startAddr": addr})
+            bulk.append((fix_id, universe, addr))
         artnet_patches.sort(key=lambda p: (p["universe"], p["startAddr"]))
         save_artnet_patches()
+    for fix_id, uni, addr in bulk:
+        push_patch_to_esp(fix_id, uni, addr)
     return jsonify({"status": "ok", "count": count})
 
 @app.route("/api/artnet/status")

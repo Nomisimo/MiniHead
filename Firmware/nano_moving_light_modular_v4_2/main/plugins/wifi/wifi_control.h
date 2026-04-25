@@ -9,7 +9,6 @@
 
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
-#include "esp_netif.h"    // esp_netif_tcpip_exec() for IDF 5.x lwIP context
 #include <ArduinoJson.h>
 #include "html_page.h"
 #include "core_globals.h"
@@ -23,6 +22,39 @@
 
 AsyncWebServer server(80);
 static bool _serverStarted = false;  // server.begin() must only be called once
+static bool _serverActive  = false;  // true only while this node is LEADER
+
+// ── Leader guard ──────────────────────────────────────────────────
+// Call at the top of HTML handlers that should be unreachable for followers.
+// Smart redirect:
+//   - request comes FROM the leader machine  → http://127.0.0.1:8080  (PC App)
+//   - request comes from any other device    → http://<leaderIP>:8080
+// Returns false when redirected; caller must return immediately.
+static bool requireLeader(AsyncWebServerRequest* req) {
+  if (_serverActive) return true;
+
+  String leaderIP = "";
+  for (int i = 0; i < peerCount; i++) {
+    if (peers[i].active && peers[i].role == ROLE_LEADER) {
+      leaderIP = String(peers[i].ip); break;
+    }
+  }
+
+  if (leaderIP.length() > 0) {
+    String clientIP = req->client()->remoteIP().toString();
+    if (clientIP == leaderIP) {
+      // Browser is running on the leader PC itself → go to local PC App
+      req->redirect("http://127.0.0.1:8080");
+    } else {
+      // Remote device (phone/tablet) → redirect to leader's LAN address
+      req->redirect("http://" + leaderIP + ":8080");
+    }
+    return false;
+  }
+
+  req->send(503, "application/json", "{\"status\":\"follower\",\"message\":\"Not the leader\"}");
+  return false;
+}
 
 struct Cue {
   unsigned long id;
@@ -180,9 +212,9 @@ void fireCueToTargets(const Cue& c) {
 
 // ── Route handlers ────────────────────────────────────────────────
 
-void handleRoot(AsyncWebServerRequest* req)           { sendHtmlProgmem(req, INDEX_HTML); }
-void handleDiscoveryPanel(AsyncWebServerRequest* req) { sendHtmlProgmem(req, DISCOVERY_PANEL_HTML); }
-void handleArtnetPanel(AsyncWebServerRequest* req)    { sendHtmlProgmem(req, ARTNET_PANEL_HTML, true); }
+void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
+void handleDiscoveryPanel(AsyncWebServerRequest* req) { if (!requireLeader(req)) return; sendHtmlProgmem(req, DISCOVERY_PANEL_HTML); }
+void handleArtnetPanel(AsyncWebServerRequest* req)    { if (!requireLeader(req)) return; sendHtmlProgmem(req, ARTNET_PANEL_HTML, true); }
 
 void handleStatus(AsyncWebServerRequest* req)     { sendJson(req, 200, "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\""+WiFi.localIP().toString()+"\"}"); }
 void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
@@ -535,32 +567,36 @@ void setupRoutes() {
 // ── Lifecycle ─────────────────────────────────────────────────────
 
 void wifi_control_setup() {
+  _serverActive = true;
   loadCuesFromFlash();
   artnet_control_setup();
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
+  Serial.flush();
+
+  Serial.println("[WiFi] Registering routes...");
+  Serial.flush();
   setupRoutes();
+  Serial.println("[WiFi] Routes OK");
+  Serial.flush();
+
   if (!_serverStarted) {
-    // ESP-IDF 5.x: tcp_alloc() requires the TCPIP core lock, which the
-    // Arduino loopTask does not hold. esp_netif_tcpip_exec() runs the
-    // callback directly inside the lwIP task (which already holds the lock).
-    // This is the correct IDF 5.x way — avoids the deadlock that
-    // LOCK_TCPIP_CORE() causes when AsyncTCP posts internal callbacks.
-    esp_netif_tcpip_exec([](void* ctx) -> esp_err_t {
-      ((AsyncWebServer*)ctx)->begin();
-      return ESP_OK;
-    }, &server);
+    Serial.println("[WiFi] Calling server.begin()...");
+    Serial.flush();
+    server.begin();
     _serverStarted = true;
     Serial.println("[WiFi] Async server started");
+    Serial.flush();
   } else {
     Serial.println("[WiFi] Async server resumed (already started)");
   }
 }
 
 void wifi_control_stop() {
-  // AsyncWebServer has no stop() — server stays alive on the WiFi task.
-  // Routes remain registered; followers receiving stray requests get real
-  // responses, but discovery ensures clients connect only to the leader IP.
-  Serial.println("[WiFi] Server remains active (async — no stop needed)");
+  _serverActive = false;
+  // AsyncWebServer has no stop() — socket stays bound on the WiFi task.
+  // requireLeader() now redirects browsers to the actual leader's IP,
+  // so a user navigating to this ESP's IP gets sent to the right place.
+  Serial.println("[WiFi] Follower mode — HTTP requests will redirect to leader");
 }
 
 void wifi_control_loop() {

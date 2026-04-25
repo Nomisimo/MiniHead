@@ -11,7 +11,7 @@
 #define DMX_CHANNELS      512
 #define DMX_FOOTPRINT     7        // channels per fixture
 #define MAX_PATCHES       32
-#define ARTNET_TIMEOUT_MS 3000
+#define ARTNET_TIMEOUT_MS 8000
 
 // ── Per-fixture patch record ─────────────────────────────────────
 struct ArtnetPatch {

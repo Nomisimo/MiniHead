@@ -34,14 +34,14 @@ git clone https://github.com/Nomisimo/MiniHead.git
 | [Modular v1](Firmware/nano_moving_light_modular_v1/README.md) | Erste Modul-Architektur | Legacy |
 | [Modular v2](Firmware/nano_moving_light_modular_v2/README.md) | Plugin-System, Multi-Head-Netzwerk | Legacy |
 | [Modular v3](Firmware/nano_moving_light_modular_v3/README.md) | Art-Net / DMX512 | Legacy |
-| [**Modular v4.2**](Firmware/nano_moving_light_modular_v4_2/README.md) | LittleFS JSON, ESPAsyncWebServer, WiFi-Multi-Network, ArtnetWifi | ✅ Aktuell |
+| [**Modular v4.2**](Firmware/nano_moving_light_modular_v4_2/README.md) | LittleFS JSON, ESPAsyncWebServer, WiFi-Multi-Network, Built-in Art-Net, PC Leader App | ✅ Aktuell |
 
 ---
 
 ## 🙏 Danksagung
 
 - **cooke001** — [miniTheatreProject](https://github.com/cooke001/miniTheatreProject) (Inspiration & Grundlage)
-- **rstephan** — [ArtnetWifi](https://github.com/rstephan/ArtnetWifi) (Art-Net/DMX512)
+- **mathieucarbou** — [ESPAsyncWebServer](https://github.com/mathieucarbou/ESPAsyncWebServer) / [AsyncTCP](https://github.com/mathieucarbou/AsyncTCP) (IDF 5.x compatible forks)
 
 > Art-Net™ is a trademark of Artistic Licence Holdings Ltd.
 

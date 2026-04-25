@@ -79,9 +79,17 @@ String artnetPatchToJson(const ArtnetPatch& p) {
 // ── HTTP handlers ─────────────────────────────────────────────────
 
 void handleArtnetStatus(AsyncWebServerRequest* req) {
+  // Include live channel values so the web UI can display them in the Art-Net bar
   String json = "{\"active\":";
   json += artnetActive ? "true" : "false";
-  json += ",\"patchCount\":" + String(artnetPatchCount) + "}";
+  json += ",\"patchCount\":" + String(artnetPatchCount);
+  json += ",\"r\":"    + String(curR);
+  json += ",\"g\":"    + String(curG);
+  json += ",\"b\":"    + String(curB);
+  json += ",\"w\":"    + String(curW);
+  json += ",\"pan\":"  + String(curPan);
+  json += ",\"tilt\":" + String(curTilt);
+  json += "}";
   sendJson(req, 200, json);
 }
 

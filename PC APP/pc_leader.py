@@ -20,6 +20,7 @@ import threading
 import time
 import json
 import os
+import urllib.request
 from flask import Flask, request, jsonify, send_from_directory
 
 # ── Version ───────────────────────────────────────────────────────
@@ -64,8 +65,23 @@ peers_lock = threading.Lock()
 peers = {}  # mac -> {mac, ip, fixID, name, role, lastSeen}
 
 def update_peer(mac, ip, fix_id, role, name=""):
+    should_push = False
     with peers_lock:
-        is_new = mac not in peers
+        is_new      = mac not in peers
+        # Re-push patches when a known peer was silent for >6 s (likely rebooted)
+        # or came back on a different IP (DHCP change / genuine reconnect).
+        was_silent  = (not is_new and
+                       time.time() - peers[mac]["lastSeen"] > PEER_TIMEOUT * 0.5)
+        ip_changed  = (not is_new and peers[mac]["ip"] != ip)
+        should_push = is_new or was_silent or ip_changed
+
+        if is_new:
+            print(f"[Discovery] Peer joined:       {mac}  IP:{ip}  Fix#{fix_id}  \"{name}\"  {role}")
+        elif ip_changed:
+            print(f"[Discovery] Peer reconnected:  {mac}  new IP:{ip}  Fix#{fix_id}")
+        elif was_silent:
+            print(f"[Discovery] Peer re-appeared:  {mac}  Fix#{fix_id}")
+
         peers[mac] = {
             "mac":      mac,
             "ip":       ip,
@@ -74,13 +90,11 @@ def update_peer(mac, ip, fix_id, role, name=""):
             "role":     "LEADER" if role in ("LEADER", "1") else "FOLLOWER",
             "lastSeen": time.time()
         }
-        if is_new:
-            print(f"[Discovery] Peer joined: {mac}  IP:{ip}  Fix#{fix_id}  \"{name}\"  {role}")
     # Auto-register in fixture pool if fixID assigned
     fid = int(fix_id) if str(fix_id).isdigit() else 0
     if fid > 0:
         _fixture_auto_register(fid, name, mac)
-        if is_new:
+        if should_push:
             _push_patch_on_join(fid, ip, mac)
 
 def expire_peers():
@@ -168,6 +182,78 @@ def load_artnet_patches():
 def save_artnet_patches():
     with open(ARTNET_PATCH_FILE, "w") as f:
         json.dump(artnet_patches, f, indent=2)
+
+# ── Art-Net sniffer ───────────────────────────────────────────────
+# Binds to UDP 6454 with SO_REUSEADDR so it co-exists with any other
+# Art-Net software. Catches broadcast ArtDmx packets; unicast-only setups
+# fall back to "no activity" (the ESP's own /api/artnet/status still works
+# correctly from the ESP's web UI).
+_artnet_lock       = threading.Lock()
+_artnet_last_pkt   = 0.0          # epoch of last valid ArtDmx packet
+_artnet_dmx        = {}           # universe(int) → list[512]
+ARTNET_TIMEOUT     = 8.0          # seconds without packet → inactive
+
+def _parse_artdmx(data: bytes):
+    """Return (universe, dmx_list) from an ArtDmx UDP payload, or None."""
+    if len(data) < 18:                                    return None
+    if data[:8] != b"Art-Net\x00":                       return None
+    if struct.unpack_from("<H", data, 8)[0] != 0x5000:   return None
+    universe = struct.unpack_from("<H", data, 14)[0]
+    length   = struct.unpack_from(">H", data, 16)[0]
+    if len(data) < 18 + length:                          return None
+    return universe, list(data[18: 18 + length])
+
+def artnet_sniffer():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try: sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    except AttributeError: pass   # Windows / older Linux
+    sock.bind(("", 6454))
+    sock.settimeout(1.0)
+    print(f"[ArtNet] Sniffer on UDP 6454 (broadcast only)")
+    while True:
+        try:
+            data, _ = sock.recvfrom(600)
+            result = _parse_artdmx(data)
+            if result:
+                uni, dmx = result
+                with _artnet_lock:
+                    _artnet_last_pkt     = time.time()
+                    _artnet_dmx[uni]     = dmx
+        except socket.timeout:
+            pass
+        except Exception as e:
+            print(f"[ArtNet] Sniffer error: {e}")
+
+def get_artnet_status() -> dict:
+    """Active flag + live channel values decoded from the first stored patch."""
+    with _artnet_lock:
+        active   = (_artnet_last_pkt > 0 and
+                    time.time() - _artnet_last_pkt < ARTNET_TIMEOUT)
+        dmx_snap = dict(_artnet_dmx)
+
+    r = g = b = w = pan = tilt = 0
+    if active:
+        with artnet_patches_lock:
+            patch = artnet_patches[0] if artnet_patches else None
+        if patch:
+            uni  = patch["universe"]
+            base = patch["startAddr"] - 1       # 0-based
+            dmx  = dmx_snap.get(uni, [])
+            if len(dmx) >= base + 7:
+                master = dmx[base + 0]
+                r    = dmx[base + 1] * master // 255
+                g    = dmx[base + 2] * master // 255
+                b    = dmx[base + 3] * master // 255
+                w    = dmx[base + 4] * master // 255
+                pan  = dmx[base + 5] * 180 // 255
+                tilt = dmx[base + 6] * 180 // 255
+
+    with artnet_patches_lock:
+        pc = len(artnet_patches)
+
+    return {"active": active, "patchCount": pc,
+            "r": r, "g": g, "b": b, "w": w, "pan": pan, "tilt": tilt}
 
 # ── Art-Net patch push helpers ────────────────────────────────────
 
@@ -666,8 +752,7 @@ def api_artnet_bulk():
 
 @app.route("/api/artnet/status")
 def api_artnet_status():
-    with artnet_patches_lock:
-        return jsonify({"patches": len(artnet_patches)})
+    return jsonify(get_artnet_status())
 
 # ── Stub endpoints (for UI compatibility) ─────────────────────────
 @app.route("/api/ports")
@@ -689,6 +774,7 @@ if __name__ == "__main__":
     threading.Thread(target=beacon_sender,    daemon=True).start()
     threading.Thread(target=beacon_receiver,  daemon=True).start()
     threading.Thread(target=sequencer_runner, daemon=True).start()
+    threading.Thread(target=artnet_sniffer,   daemon=True).start()
 
     print(f"[PC Leader] {APP_VERSION}")
     print(f"[PC Leader] MAC:  {OWN_MAC}")

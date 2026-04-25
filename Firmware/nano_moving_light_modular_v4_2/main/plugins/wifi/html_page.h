@@ -158,10 +158,12 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   #toast.err{border-color:var(--danger);color:var(--danger);}
   @media(min-width:900px){#toast{left:auto;width:auto;}}
   /* ── Art-Net bar ── */
-  #artnet-bar{display:none;align-items:center;gap:8px;padding:5px 16px;background:rgba(34,197,94,0.12);border-bottom:1px solid var(--success);font-family:var(--mono);font-size:11px;color:var(--success);letter-spacing:1px;}
+  #artnet-bar{display:none;align-items:center;gap:10px;padding:6px 16px;background:rgba(34,197,94,0.10);border-bottom:1px solid rgba(34,197,94,0.4);font-family:var(--mono);font-size:11px;color:var(--success);letter-spacing:1px;}
   #artnet-bar.visible{display:flex;}
   #artnet-bar-dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);animation:pulse 1s infinite;flex-shrink:0;}
-  .artnet-locked{pointer-events:none!important;opacity:0.45;transition:opacity 0.3s;}
+  #artnet-live{color:var(--text);letter-spacing:0;font-size:11px;opacity:0.85;}
+  #artnet-bar-count{color:var(--text-dim);margin-left:auto;white-space:nowrap;}
+  .artnet-locked{pointer-events:none!important;opacity:0.38;transition:opacity 0.3s;user-select:none;}
   .area-light,.area-motion,.area-rainbow,.area-serial,.area-sequencer{position:relative;}
 </style>
 </head>
@@ -176,8 +178,9 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 </header>
 <div id="artnet-bar">
   <div id="artnet-bar-dot"></div>
-  <span>&#9679;&nbsp;Running on: Art-Net</span>
-  <span id="artnet-bar-count" style="color:var(--text-dim);margin-left:auto;"></span>
+  <span>ART-NET</span>
+  <span id="artnet-live"></span>
+  <span id="artnet-bar-count"></span>
 </div>
 
 <div class="main">
@@ -358,8 +361,30 @@ function loadModule(url, id) {
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
 loadModule('/plugins/artnet/panel.html','artnet-module-container');
 var _artnetWasActive=false;
-function an_pollStatus(){fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){if(d.active===_artnetWasActive)return;_artnetWasActive=d.active;document.getElementById('artnet-bar').classList.toggle('visible',d.active);document.getElementById('artnet-bar-count').textContent=d.active?d.patchCount+' fixture(s)':'';['.area-light','.area-motion','.area-rainbow','.area-serial','.area-sequencer'].forEach(function(sel){var el=document.querySelector(sel);if(el)el.classList.toggle('artnet-locked',d.active);});}).catch(function(){});}
-setInterval(an_pollStatus,500);
+function an_pollStatus(){
+  fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){
+    var active=!!d.active;
+    // Toggle bar visibility and control lock only when state changes
+    if(active!==_artnetWasActive){
+      _artnetWasActive=active;
+      document.getElementById('artnet-bar').classList.toggle('visible',active);
+      ['.area-light','.area-motion','.area-rainbow','.area-serial','.area-sequencer'].forEach(function(sel){
+        var el=document.querySelector(sel);if(el)el.classList.toggle('artnet-locked',active);
+      });
+    }
+    // Always refresh live values while active
+    if(active){
+      document.getElementById('artnet-live').textContent=
+        'R:'+d.r+' G:'+d.g+' B:'+d.b+' W:'+d.w+
+        '  PAN:'+d.pan+'\u00b0 TILT:'+d.tilt+'\u00b0';
+      document.getElementById('artnet-bar-count').textContent=d.patchCount+' fix';
+    } else {
+      document.getElementById('artnet-live').textContent='';
+      document.getElementById('artnet-bar-count').textContent='';
+    }
+  }).catch(function(){});
+}
+setInterval(an_pollStatus,250);
 </script>
 </body>
 </html>

@@ -33,25 +33,18 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
 
 // ── Apply DMX to own fixture ──────────────────────────────────────
 static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data) {
-  static uint16_t  dbg_lastUni = 0xFFFF;
-  static unsigned long dbg_t   = 0;
-  bool print = (universe != dbg_lastUni || millis() - dbg_t > 2000);
+  // Track previous output values — only log when something actually changes
+  static uint8_t pM=0, pR=0, pG=0, pB=0, pW=0;
+  static int     pPan=-1, pTilt=-1;
 
-  bool matched = false;
   for (int i = 0; i < artnetPatchCount; i++) {
     const ArtnetPatch& p = artnetPatches[i];
-
-    if (print) {
-      Serial.printf("[ArtNet] patch[%d] fixID=%d ownFixID=%d uni=%u p.uni=%u addr=%u\n",
-                    i, p.fixID, ownFixID, universe, p.universe, p.startAddr);
-    }
-
     if (p.fixID    != ownFixID) continue;
     if (p.universe != universe) continue;
 
     int base = (int)p.startAddr - 1;
     if (base < 0 || base + DMX_FOOTPRINT > (int)length) {
-      Serial.printf("[ArtNet] SKIP Fix#%d — base=%d length=%u\n", p.fixID, base, length);
+      Serial.printf("[ArtNet] SKIP Fix#%d base=%d len=%u\n", p.fixID, base, length);
       continue;
     }
 
@@ -63,27 +56,18 @@ static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
     int pan   = map(data[base + CH_PAN],  0, 255, 0, 180);
     int tilt  = map(data[base + CH_TILT], 0, 255, 0, 180);
 
-    if (print) {
-      Serial.printf("[ArtNet] MATCH Fix#%d uni=%u addr=%u  M=%u R=%u G=%u B=%u W=%u PAN=%d TILT=%d\n",
-                    p.fixID, universe, p.startAddr,
-                    master, r, g, b, w, pan, tilt);
+    if (master!=pM || r!=pR || g!=pG || b!=pB || w!=pW || pan!=pPan || tilt!=pTilt) {
+      Serial.printf("[ArtNet] Fix#%d  M=%u R=%u G=%u B=%u W=%u  PAN=%d TILT=%d\n",
+                    p.fixID, master, r, g, b, w, pan, tilt);
+      pM=master; pR=r; pG=g; pB=b; pW=w; pPan=pan; pTilt=tilt;
     }
 
     rainbowActive = false;
     setLED(r, g, b, w);
     setPan(pan);
     setTilt(tilt);
-    matched = true;
-    break;
+    return;
   }
-
-  if (print && !matched) {
-    Serial.printf("[ArtNet] NO MATCH for uni=%u  (patchCount=%d  ownFixID=%d)\n",
-                  universe, artnetPatchCount, ownFixID);
-  }
-
-  dbg_lastUni = universe;
-  dbg_t       = millis();
 }
 
 // ── Leader relay: fan Art-Net data to followers ───────────────────

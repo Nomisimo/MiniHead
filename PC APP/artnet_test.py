@@ -32,9 +32,30 @@ from flask import Flask, request, jsonify
 TARGET_IP   = sys.argv[1] if len(sys.argv) > 1 else "255.255.255.255"
 UNIVERSE    = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 START_ADDR  = int(sys.argv[3]) if len(sys.argv) > 3 else 1   # 1-based
+# Optional: --bind <local_ip> forces the socket onto a specific interface.
+# Useful on macOS with VPN/Docker (prevents packets routing to wrong interface).
+BIND_IP     = ""
+for _i, _a in enumerate(sys.argv):
+    if _a == "--bind" and _i + 1 < len(sys.argv):
+        BIND_IP = sys.argv[_i + 1]
 ARTNET_PORT = 6454
 SEND_RATE   = 40      # packets/s
 UI_PORT     = 8765
+
+# ── Interface detection ────────────────────────────────────────────
+def get_local_ip_for(target_ip: str) -> str:
+    """Return the local IP address the OS would use to reach target_ip.
+    On macOS with active VPN or Docker, this ensures packets leave on the
+    correct LAN interface rather than being swallowed by a tunnel."""
+    probe = "8.8.8.8" if target_ip in ("255.255.255.255", "<broadcast>") else target_ip
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((probe, 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return ""
 
 # ── DMX channel layout (matches firmware footprint) ───────────────
 CH_MASTER = 0
@@ -162,6 +183,17 @@ def sender():
     global pkt_count, demo_t, dmx_last_sent
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    # Bind to the correct outgoing interface.  On macOS with VPN or Docker
+    # the unbound socket may route UDP through a tunnel — Wireshark then shows
+    # nothing on the LAN even though sendto() returns no error.
+    bind_ip = BIND_IP or get_local_ip_for(TARGET_IP)
+    if bind_ip:
+        try:
+            sock.bind((bind_ip, 0))
+        except Exception as e:
+            pass   # non-fatal — OS picks interface
+
     tick     = 1.0 / SEND_RATE   # how often we CHECK for changes (40Hz)
     prev_t   = time.time()
     last_sent_t = 0.0            # timestamp of last transmitted packet
@@ -194,8 +226,8 @@ def sender():
                 pkt_count  += 1
                 dmx_last_sent = payload
                 last_sent_t   = t0
-            except Exception:
-                pass
+            except Exception as e:
+                pass   # sendto rarely fails on UDP; errors show as pkt_count stalling
 
         elapsed = time.time() - t0
         time.sleep(max(0, tick - elapsed))
@@ -766,13 +798,12 @@ def render():
     return "\n".join(lines)
 
 def display():
-    prev = 0
     while running:
         frame = render()
-        nl = frame.count("\n") + 1
-        if prev: sys.stdout.write(f"\033[{prev}A\033[J")
-        sys.stdout.write(frame + "\n"); sys.stdout.flush()
-        prev = nl
+        # \033[H → cursor to top-left   \033[J → clear to end of screen
+        # Avoids the horizontal-drift bug caused by line-count-based cursor-up.
+        sys.stdout.write("\033[H\033[J" + frame + "\n")
+        sys.stdout.flush()
         time.sleep(1.0 / 15)
 
 def getch():
@@ -821,9 +852,7 @@ def input_loop():
 
 # ── Entry point ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    print(f"\033[2J\033[H", end="")  # clear screen
-    print(f"  Art-Net Test v2  —  http://localhost:{UI_PORT}")
-    print(f"  Target: {TARGET_IP}  Universe: {UNIVERSE}  StartAddr: {START_ADDR}\n")
+    sys.stdout.write("\033[2J\033[H"); sys.stdout.flush()  # clear screen once at start
 
     threading.Thread(target=sender,     daemon=True).start()
     threading.Thread(target=display,    daemon=True).start()

@@ -11,39 +11,9 @@
 #include "artnet_globals.h"
 #include "artnet_receiver.h"
 
-// ── Storage (/artnet.json) ────────────────────────────────────────
-// Schema: [{"fixID":1,"universe":0,"startAddr":1}]
-
-void artnet_savePatches() {
-  JsonDocument doc;
-  JsonArray arr = doc.to<JsonArray>();
-  for (int i = 0; i < artnetPatchCount; i++) {
-    JsonObject o = arr.add<JsonObject>();
-    o["fixID"]     = artnetPatches[i].fixID;
-    o["universe"]  = artnetPatches[i].universe;
-    o["startAddr"] = artnetPatches[i].startAddr;
-  }
-  storage_writeJson("/artnet.json", doc);
-}
-
-void artnet_loadPatches() {
-  artnetPatchCount = 0;
-  JsonDocument doc;
-  if (!storage_readJson("/artnet.json", doc)) {
-    Serial.println("[ArtNet] No patch data — starting fresh");
-    return;
-  }
-  for (JsonObject o : doc.as<JsonArray>()) {
-    if (artnetPatchCount >= MAX_PATCHES) break;
-    artnetPatches[artnetPatchCount].fixID     = o["fixID"]     | 0;
-    artnetPatches[artnetPatchCount].universe  = o["universe"]  | 0;
-    artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
-    artnetPatchCount++;
-  }
-  Serial.printf("[ArtNet] Loaded %d patch(es) from /artnet.json\n", artnetPatchCount);
-}
-
 // ── Upsert helper — add or update a patch by fixID ───────────────
+// artnet_savePatches() and artnet_loadPatches() live in artnet_receiver.h
+// so they are available on ALL nodes (leader + follower).
 void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr) {
   for (int i = 0; i < artnetPatchCount; i++) {
     if (artnetPatches[i].fixID == fixID) {

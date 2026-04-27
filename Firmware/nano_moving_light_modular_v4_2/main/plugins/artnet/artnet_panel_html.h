@@ -18,85 +18,53 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   #an_grid{display:grid;grid-template-columns:repeat(32,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px;cursor:crosshair;}
   .an-cell{aspect-ratio:1;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:filter 0.08s;font-size:9px;color:rgba(0,0,0,0.8);font-family:var(--mono);font-weight:700;line-height:1;user-select:none;}
   .an-cell:hover{filter:brightness(1.5);}
-  .an-cell.an-pending{outline:2px solid var(--accent);outline-offset:-2px;}
-  .an-patch-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
-  .an-patch-table th{text-align:left;color:var(--text-dim);font-weight:normal;padding:4px 6px;border-bottom:1px solid var(--border);letter-spacing:1px;font-size:10px;}
-  .an-patch-table td{padding:5px 6px;border-bottom:1px solid rgba(42,42,58,0.5);vertical-align:middle;}
-  .an-patch-table tr:last-child td{border-bottom:none;}
-  .an-sel-row{background:rgba(0,229,255,0.07)!important;}
-  .an-del{width:26px;height:26px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;}
-  .an-empty{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:18px 0;}
   .net-btn{padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:all 0.15s;text-transform:uppercase;touch-action:manipulation;}
   .net-btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08);}
   .net-btn.sm{padding:3px 8px;font-size:10px;}
-  /* Two-column layout: grid left | table right */
-  .an-layout{display:grid;grid-template-columns:1fr;gap:0;align-items:start;}
-  .an-right{border-top:1px solid var(--border);margin-top:14px;padding-top:14px;}
-  @media(min-width:700px){
-    .an-layout{grid-template-columns:1fr 230px;gap:0;}
-    .an-right{border-top:none;margin-top:0;padding-top:0;padding-left:16px;border-left:1px solid var(--border);max-height:340px;overflow-y:auto;}
-    .an-right::-webkit-scrollbar{width:4px;}
-    .an-right::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-  }
-  .an-sidebar-title{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 </style>
 
 <div class="an-title">// Art-Net Patch</div>
 
-<div class="an-layout">
-
-  <!-- Left: controls + full grid -->
-  <div class="an-left">
-    <!-- Bulk patch row -->
-    <div class="an-row">
-      <span class="an-label">Bulk:</span>
-      <span class="an-label">Uni</span>
-      <input type="number" id="an_bulkUni" class="an-num" value="0" min="0" max="32767">
-      <span class="an-label">.</span>
-      <span class="an-label">Addr</span>
-      <input type="number" id="an_bulkAddr" class="an-num" value="1" min="1" max="512">
-      <span class="an-label">&times;</span>
-      <input type="number" id="an_bulkCount" class="an-num" value="1" min="1" max="32" style="width:40px;">
-      <span class="an-label">lamps&nbsp;&nbsp;Fix#</span>
-      <input type="number" id="an_bulkFix" class="an-num" value="1" min="1" max="999" style="width:48px;">
-      <button class="net-btn primary" onclick="an_bulk()">PATCH</button>
-    </div>
-    <!-- Action row -->
-    <div class="an-row" style="margin-bottom:4px;">
-      <button class="net-btn primary" onclick="an_patchSelected()">PATCH SELECTED</button>
-      <span style="flex:1;"></span>
-      <button class="net-btn" onclick="an_clearUniverse()">CLEAR UNIVERSE</button>
-      <button class="net-btn" style="color:var(--danger);border-color:var(--danger);" onclick="an_clearAll()">CLEAR ALL</button>
-    </div>
-
-    <!-- Universe navigation -->
-    <div class="an-uni-nav">
-      <span class="an-label">Universe</span>
-      <input type="number" id="an_uniInput" class="an-num" value="0" min="0" max="32767"
-        onchange="an_gotoUniverse(parseInt(this.value)||0)">
-      <button class="net-btn sm" onclick="an_prevUniverse()">&#9664;</button>
-      <button class="net-btn sm" onclick="an_nextUniverse()">&#9654;</button>
-      <span class="an-label" id="an_uniInfo" style="margin-left:auto;"></span>
-    </div>
-
-    <!-- 512-slot grid -->
-    <div id="an_grid"></div>
-  </div>
-
-  <!-- Right: patch list sidebar -->
-  <div class="an-right">
-    <div class="an-sidebar-title">Patches</div>
-    <div id="an_patchTable"></div>
-  </div>
-
+<!-- Bulk patch row -->
+<div class="an-row">
+  <span class="an-label">Bulk:</span>
+  <span class="an-label">Uni</span>
+  <input type="number" id="an_bulkUni" class="an-num" value="0" min="0" max="32767">
+  <span class="an-label">.</span>
+  <span class="an-label">Addr</span>
+  <input type="number" id="an_bulkAddr" class="an-num" value="1" min="1" max="512">
+  <span class="an-label">&times;</span>
+  <input type="number" id="an_bulkCount" class="an-num" value="1" min="1" max="32" style="width:40px;">
+  <span class="an-label">lamps&nbsp;&nbsp;Fix#</span>
+  <input type="number" id="an_bulkFix" class="an-num" value="1" min="1" max="999" style="width:48px;">
+  <button class="net-btn primary" onclick="an_bulk()">PATCH</button>
 </div>
+<!-- Action row -->
+<div class="an-row" style="margin-bottom:4px;">
+  <button class="net-btn primary" onclick="an_patchSelected()">PATCH SELECTED</button>
+  <span style="flex:1;"></span>
+  <button class="net-btn" onclick="an_clearUniverse()">CLEAR UNIVERSE</button>
+  <button class="net-btn" style="color:var(--danger);border-color:var(--danger);" onclick="an_clearAll()">CLEAR ALL</button>
+</div>
+
+<!-- Universe navigation -->
+<div class="an-uni-nav">
+  <span class="an-label">Universe</span>
+  <input type="number" id="an_uniInput" class="an-num" value="0" min="0" max="32767"
+    onchange="an_gotoUniverse(parseInt(this.value)||0)">
+  <button class="net-btn sm" onclick="an_prevUniverse()">&#9664;</button>
+  <button class="net-btn sm" onclick="an_nextUniverse()">&#9654;</button>
+  <span class="an-label" id="an_uniInfo" style="margin-left:auto;"></span>
+</div>
+
+<!-- 512-slot grid — select one head in Network Heads, then click a cell to patch -->
+<div id="an_grid"></div>
 
 <script>
 (function(){
   var DMX_FP = 7;
   var an_patches = [], an_fixtures = [];
   var an_curUni = 0;
-  var an_selectedFixID = null;
   var FIX_HUES = [200,30,120,270,0,60,160,300,45,330];
 
   function an_fixColor(fixID){
@@ -112,14 +80,14 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
       fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];})
     ]).then(function(res){
       an_patches=res[0]; an_fixtures=res[1];
-      an_renderGrid(); an_renderTable();
+      an_renderGrid();
     }).catch(function(){});
   }
 
   function an_gotoUniverse(uni){
     an_curUni = Math.max(0, Math.min(32767, uni));
     document.getElementById('an_uniInput').value = an_curUni;
-    an_renderGrid(); an_renderTable();
+    an_renderGrid();
   }
   function an_prevUniverse(){ an_gotoUniverse(an_curUni - 1); }
   function an_nextUniverse(){ an_gotoUniverse(an_curUni + 1); }
@@ -158,7 +126,6 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
         cell.innerHTML = '<span style="font-size:9px;opacity:0.25;color:#fff;">'+i+'</span>';
         cell.title = 'Addr '+i+' (free)';
       }
-      if(an_selectedFixID !== null && p && p.fixID === an_selectedFixID) cell.classList.add('an-pending');
       cell.addEventListener('click', function(){
         an_cellClick(parseInt(this.dataset.addr));
       });
@@ -166,65 +133,27 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     }
   }
 
+  // Click a grid cell: patches the single selected head (from Network Heads) to that address
   function an_cellClick(addr){
-    if(an_selectedFixID === null){
-      if(typeof toast==='function') toast('Select a fixture row first','err');
+    var ids = (typeof nh_getSelectedFixIDs==='function') ? nh_getSelectedFixIDs() : [];
+    if(ids.length !== 1){
+      if(typeof toast==='function') toast(ids.length===0 ? 'Select a head in Network Heads first' : 'Select exactly one head to patch','err');
       return;
     }
     if(addr + DMX_FP - 1 > 512){
       if(typeof toast==='function') toast('Not enough room \u2014 use next universe','err');
       return;
     }
-    var selFix = an_selectedFixID;
+    var selFix = ids[0];
     fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({fixID:selFix,universe:an_curUni,startAddr:addr})
     }).then(function(r){return r.json();}).then(function(d){
       if(d.status==='ok'){
-        an_selectedFixID=null;
-        if(typeof toast==='function') toast('Patched Fix#'+selFix);
+        if(typeof toast==='function') toast('Patched Fix#'+selFix+' \u2192 Uni '+an_curUni+' Addr '+addr);
         an_load();
       } else if(typeof toast==='function') toast(d.message||'Error','err');
     });
   }
-
-  function an_renderTable(){
-    var el = document.getElementById('an_patchTable');
-    if(!an_patches.length){
-      el.innerHTML='<div class="an-empty">No fixtures patched</div>';
-      return;
-    }
-    var fix_map={};
-    an_fixtures.forEach(function(f){fix_map[f.id]=f.name||('Fix#'+f.id);});
-    var html='<table class="an-patch-table"><thead><tr>'
-      +'<th></th><th>Fix#</th><th>Name</th><th>Uni</th><th>Addr</th><th></th>'
-      +'</tr></thead><tbody>';
-    an_patches.forEach(function(p){
-      var sel = an_selectedFixID===p.fixID;
-      var name = fix_map[p.fixID]||('Fix#'+p.fixID);
-      html+='<tr class="'+(sel?'an-sel-row':'')+'">'
-        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;">'
-          +'<div style="width:8px;height:8px;border-radius:2px;background:'+an_fixColor(p.fixID)+';"></div></td>'
-        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;color:var(--accent2);">'+p.fixID+'</td>'
-        +'<td onclick="an_selectFix('+p.fixID+')" style="cursor:pointer;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+name+'</td>'
-        +'<td><input type="number" class="an-num" style="width:40px;" value="'+p.universe+'" min="0" max="32767"'
-          +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',+this.value,null)"></td>'
-        +'<td><input type="number" class="an-num" style="width:40px;color:var(--accent);" value="'+p.startAddr+'" min="1" max="512"'
-          +' onclick="event.stopPropagation()" onchange="an_updatePatch('+p.fixID+',null,+this.value)"></td>'
-        +'<td><button class="an-del" onclick="an_del(event,'+p.fixID+')">&#10005;</button></td>'
-        +'</tr>';
-    });
-    html+='</tbody></table>';
-    el.innerHTML=html;
-  }
-
-  window.an_selectFix=function(fixID){
-    an_selectedFixID = (an_selectedFixID===fixID) ? null : fixID;
-    var p = an_patches.find(function(x){return x.fixID===fixID;});
-    if(p && an_selectedFixID!==null) an_gotoUniverse(p.universe);
-    else { an_renderGrid(); an_renderTable(); }
-    if(typeof toast==='function' && an_selectedFixID!==null)
-      toast('Fix#'+fixID+' selected \u2014 click a grid cell to patch');
-  };
 
   window.an_updatePatch=function(fixID, uni, addr){
     var p=an_patches.find(function(x){return x.fixID===fixID;});
@@ -234,19 +163,18 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
       body:JSON.stringify(data)
     }).then(function(r){return r.json();}).then(function(d){
       if(d.status==='ok'){
-        if(uni!==null){ p.universe=uni; if(an_selectedFixID===fixID) an_gotoUniverse(uni); }
+        if(uni!==null) p.universe=uni;
         if(addr!==null) p.startAddr=addr;
-        an_renderGrid(); an_renderTable();
+        an_renderGrid();
         if(typeof toast==='function') toast('Patch updated');
       }
     });
   };
 
   window.an_del=function(e,fixID){
-    e.stopPropagation();
+    if(e) e.stopPropagation();
     fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
       if(typeof toast==='function') toast('Patch removed');
-      if(an_selectedFixID===fixID) an_selectedFixID=null;
       an_load();
     });
   };

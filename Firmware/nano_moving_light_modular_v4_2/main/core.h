@@ -65,8 +65,9 @@ void applyCommand(const String& cmd) {
     if (!rainbowActive) setLED(_preRainbowR, _preRainbowG, _preRainbowB, _preRainbowW);
     return;
   }
-  rainbowActive = false;
+
   int r=curR,g=curG,b=curB,w=curW,pan=curPan,tilt=curTilt,pos=0;
+  bool hasColor = false;   // true if the command contains any of R / G / B / W
   while (pos < (int)cmd.length()) {
     int comma = cmd.indexOf(',', pos);
     if (comma<0) comma = cmd.length();
@@ -75,16 +76,24 @@ void applyCommand(const String& cmd) {
     if (col>=0) {
       String key = tok.substring(0,col); key.toUpperCase();
       int val = tok.substring(col+1).toInt();
-      if      (key=="R")    r    = constrain(val,0,255);
-      else if (key=="G")    g    = constrain(val,0,255);
-      else if (key=="B")    b    = constrain(val,0,255);
-      else if (key=="W")    w    = constrain(val,0,255);
+      if      (key=="R")    { r    = constrain(val,0,255); hasColor = true; }
+      else if (key=="G")    { g    = constrain(val,0,255); hasColor = true; }
+      else if (key=="B")    { b    = constrain(val,0,255); hasColor = true; }
+      else if (key=="W")    { w    = constrain(val,0,255); hasColor = true; }
       else if (key=="PAN")  pan  = constrain(val,0,180);
       else if (key=="TILT") tilt = constrain(val,0,180);
     }
     pos = comma+1;
   }
-  setLED(r,g,b,w); setPan(pan); setTilt(tilt);
+  // Only kill rainbow and update LED when the command explicitly sets a color channel.
+  // A pure PAN/TILT command must not touch rainbow or the LED at all —
+  // the rainbow loop writes directly to the strip without updating curR/G/B/W,
+  // so calling setLED(curR,curG,curB,curW) here would write (0,0,0,0) and black out the LED.
+  if (hasColor) {
+    rainbowActive = false;
+    setLED(r,g,b,w);
+  }
+  setPan(pan); setTilt(tilt);
 }
 
 // ── Module lifecycle ──────────────────────────────────────────────

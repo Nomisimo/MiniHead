@@ -15,6 +15,7 @@
 #include <WiFiUdp.h>
 #include "artnet_globals.h"
 #include "../../core.h"
+#include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
 #include "../wifi/udp_control.h"
 #include "../storage/storage.h"
@@ -26,6 +27,12 @@ bool          artnetActive      = false;
 unsigned long artnetLastPacket  = 0;
 
 static WiFiUDP _artnetUdp;
+
+// Pre-ArtNet state — saved when ArtNet first becomes active so we can
+// restore the light to what it was before ArtNet took over.
+static bool    _artnetHadPre  = false;
+static uint8_t _preArtR=0, _preArtG=0, _preArtB=0, _preArtW=0;
+static int     _preArtPan=90, _preArtTilt=90;
 
 // ── Forward declarations ──────────────────────────────────────────
 void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
@@ -64,6 +71,9 @@ void artnet_loadPatches() {
 
 // ── Apply DMX to own fixture ──────────────────────────────────────
 static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data) {
+  // Identify is held — do not let Art-Net override the white flash
+  if (_identifyActive) return;
+
   // Track previous output values — only log when something actually changes
   static uint8_t pM=0, pR=0, pG=0, pB=0, pW=0;
   static int     pPan=-1, pTilt=-1;
@@ -88,8 +98,9 @@ static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
     int tilt  = map(data[base + CH_TILT], 0, 255, 0, 180);
 
     if (master!=pM || r!=pR || g!=pG || b!=pB || w!=pW || pan!=pPan || tilt!=pTilt) {
-      Serial.printf("[ArtNet] Fix#%d  M=%u R=%u G=%u B=%u W=%u  PAN=%d TILT=%d\n",
-                    p.fixID, master, r, g, b, w, pan, tilt);
+      if (logCfg.artnetFrames)
+        Serial.printf("[ArtNet] Fix#%d  M=%u R=%u G=%u B=%u W=%u  PAN=%d TILT=%d\n",
+                      p.fixID, master, r, g, b, w, pan, tilt);
       pM=master; pR=r; pG=g; pB=b; pW=w; pPan=pan; pTilt=tilt;
     }
 
@@ -134,6 +145,18 @@ static void artnet_relayToFollowers(uint16_t universe, uint16_t length, uint8_t*
 // ── ArtDmx callback ───────────────────────────────────────────────
 static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
                                uint8_t sequence, uint8_t* data) {
+  if (!artnetActive) {
+    // First packet of a new ArtNet session — save the pre-ArtNet state so
+    // we can restore it when the sender stops (avoids leaving the light black).
+    if (!_artnetHadPre) {
+      _preArtR    = curR;  _preArtG    = curG;
+      _preArtB    = curB;  _preArtW    = curW;
+      _preArtPan  = curPan; _preArtTilt = curTilt;
+      _artnetHadPre = true;
+    }
+    if (logCfg.artnetEvents)
+      Serial.printf("[ArtNet] Active — receiving universe %d\n", universe);
+  }
   artnetActive     = true;
   artnetLastPacket = millis();
   artnet_applyOwnPatch(universe, length, data);
@@ -183,7 +206,14 @@ void artnet_receiver_loop() {
     if (n > 0) artnet_parsePacket(buf, (size_t)n);
   }
   if (artnetActive && (millis() - artnetLastPacket > ARTNET_TIMEOUT_MS)) {
-    artnetActive = false;
-    Serial.println("[ArtNet] Timeout — inactive");
+    artnetActive  = false;
+    _artnetHadPre = false;   // reset so next session saves a fresh pre-state
+    if (logCfg.artnetEvents) Serial.println("[ArtNet] Timeout — restoring pre-ArtNet state");
+    // Restore the light to whatever it was before ArtNet took over.
+    // Without this the LED stays black (M=0 from the last ArtNet frame) forever.
+    if (!_identifyActive) {
+      setLED(_preArtR, _preArtG, _preArtB, _preArtW);
+      setPan(_preArtPan); setTilt(_preArtTilt);
+    }
   }
 }

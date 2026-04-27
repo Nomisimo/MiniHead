@@ -12,6 +12,8 @@
 #include <ArduinoJson.h>
 #include "html_page.h"
 #include "core_globals.h"
+#include "log_config.h"
+#include "log_panel_html.h"
 #include "discovery_panel_html.h"
 #include "discovery_globals.h"
 #include "udp_control.h"
@@ -213,8 +215,12 @@ void fireCueToTargets(const Cue& c) {
 // ── Route handlers ────────────────────────────────────────────────
 
 void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
-void handleDiscoveryPanel(AsyncWebServerRequest* req) { if (!requireLeader(req)) return; sendHtmlProgmem(req, DISCOVERY_PANEL_HTML); }
-void handleArtnetPanel(AsyncWebServerRequest* req)    { if (!requireLeader(req)) return; sendHtmlProgmem(req, ARTNET_PANEL_HTML, true); }
+// Panel HTML fragments are served regardless of role — they are static JS/HTML that
+// call the APIs themselves, and the API endpoints handle the leader/follower guard.
+// Serving them even as follower prevents "Network heads plugin not available" errors
+// when loadModule() fetches them from a browser pointed at this ESP's IP.
+void handleDiscoveryPanel(AsyncWebServerRequest* req) { sendHtmlProgmem(req, DISCOVERY_PANEL_HTML); }
+void handleArtnetPanel(AsyncWebServerRequest* req)    { sendHtmlProgmem(req, ARTNET_PANEL_HTML, true); }
 
 void handleStatus(AsyncWebServerRequest* req)     { sendJson(req, 200, "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\""+WiFi.localIP().toString()+"\"}"); }
 void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
@@ -469,6 +475,21 @@ void handleSeqStart(AsyncWebServerRequest* req) {
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
+// ── Log config handlers ───────────────────────────────────────────
+
+void handleLogPanel(AsyncWebServerRequest* req) {
+  AsyncWebServerResponse* resp = req->beginResponse_P(200, "text/html", LOG_PANEL_HTML);
+  resp->addHeader("Access-Control-Allow-Origin","*");
+  req->send(resp);
+}
+void handleGetLogConfig(AsyncWebServerRequest* req) {
+  sendJson(req, 200, logcfg_toJson());
+}
+void handleSetLogConfig(AsyncWebServerRequest* req) {
+  logcfg_fromJson(_getBody(req));
+  sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
 // ── Route setup ───────────────────────────────────────────────────
 
 void setupRoutes() {
@@ -485,6 +506,13 @@ void setupRoutes() {
   server.on("/",                                  HTTP_GET, [](AsyncWebServerRequest* r){ handleRoot(r); });
   server.on("/plugins/wifi/discovery_panel.html", HTTP_GET, [](AsyncWebServerRequest* r){ handleDiscoveryPanel(r); });
   server.on("/plugins/artnet/panel.html",         HTTP_GET, [](AsyncWebServerRequest* r){ handleArtnetPanel(r); });
+  server.on("/plugins/log/panel.html",            HTTP_GET, [](AsyncWebServerRequest* r){ handleLogPanel(r); });
+
+  // ── Log config API ────────────────────────────────────────────
+  server.on("/api/logconfig", HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetLogConfig(r); });
+  server.on("/api/logconfig", HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleSetLogConfig(r); },
+    nullptr, _bodyAccumulator);
 
   // ── Art-Net API — specific paths before wildcards ─────────────
   server.on("/api/artnet/status",     HTTP_GET,    [](AsyncWebServerRequest* r){ handleArtnetStatus(r); });
@@ -568,6 +596,7 @@ void setupRoutes() {
 
 void wifi_control_setup() {
   _serverActive = true;
+  logcfg_load();
   loadCuesFromFlash();
   artnet_control_setup();
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
@@ -597,6 +626,33 @@ void wifi_control_stop() {
   // requireLeader() now redirects browsers to the actual leader's IP,
   // so a user navigating to this ESP's IP gets sent to the right place.
   Serial.println("[WiFi] Follower mode — HTTP requests will redirect to leader");
+}
+
+// Start the HTTP server in follower mode (routes registered, APIs inactive).
+// Called by discovery when this node first boots as a follower so the browser
+// gets a redirect response instead of a connection-refused error.
+void wifi_control_setup_follower() {
+  _serverActive = false;   // follower — APIs will redirect
+  logcfg_load();
+  // Skip loadCuesFromFlash / artnet_control_setup — those write state that only
+  // makes sense on the leader. The follower just needs routes + server running.
+  Serial.println("[WiFi] Follower — starting server for browser redirects");
+  setupRoutes();
+  if (!_serverStarted) {
+    server.begin();
+    _serverStarted = true;
+    Serial.println("[WiFi] Async server started (follower)");
+  }
+}
+
+// Called when this node wins election after having been a follower —
+// the server is already running, just activate the API layer.
+void wifi_control_promote() {
+  _serverActive = true;
+  logcfg_load();
+  loadCuesFromFlash();
+  artnet_control_setup();
+  Serial.println("[WiFi] Promoted to LEADER — APIs active");
 }
 
 void wifi_control_loop() {

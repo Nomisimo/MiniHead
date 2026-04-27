@@ -222,13 +222,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
   </div>
 
-  <!-- Modules: Network Heads + Art-Net Patch -->
+  <!-- Modules: Network Heads + Art-Net Patch + Log Config -->
   <div class="area-future" style="background:var(--bg)">
     <div class="panel" id="module-container" style="border-bottom:1px solid var(--border)">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
     </div>
-    <div class="panel" id="artnet-module-container">
+    <div class="panel" id="artnet-module-container" style="border-bottom:1px solid var(--border)">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net...</div>
+    </div>
+    <div class="panel" id="log-module-container">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Log Config...</div>
     </div>
   </div>
 
@@ -360,6 +363,7 @@ function loadModule(url, id) {
 }
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
 loadModule('/plugins/artnet/panel.html','artnet-module-container');
+loadModule('/plugins/log/panel.html','log-module-container');
 var _artnetWasActive=false;
 function an_pollStatus(){
   fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){

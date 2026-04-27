@@ -115,11 +115,16 @@ void discovery_elect() {
   if (iAmLeader && nodeRole != ROLE_LEADER) {
     nodeRole = ROLE_LEADER;
     Serial.println("[Discovery] ** I am the LEADER **");
+    // Always ensure the server is started — it may have been running in follower mode already.
     if (!_webServerStarted) { wifi_control_setup(); _webServerStarted = true; }
+    else                    { wifi_control_promote(); }   // already started as follower → activate APIs
   } else if (!iAmLeader && nodeRole != ROLE_FOLLOWER) {
     nodeRole = ROLE_FOLLOWER;
-    if (_webServerStarted) { wifi_control_stop(); _webServerStarted = false; }
     Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s\n", candidates[winIdx].mac);
+    // Start server even as a follower so browsers get a redirect instead of
+    // "connection refused" — prevents "Network heads plugin not available" errors.
+    if (!_webServerStarted) { wifi_control_setup_follower(); _webServerStarted = true; }
+    else                    { wifi_control_stop(); }
   }
 }
 
@@ -159,7 +164,8 @@ void discovery_parseBeacon(const char* data, int len) {
   if (strcmp(mac, ownMAC) == 0) return;
 
   discovery_addOrUpdate(mac, ip, fixID, role, name);
-  Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n", mac, ip, fixID, fields[3], name);
+  if (logCfg.discoveryBeacons)
+    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n", mac, ip, fixID, fields[3], name);
 
   if (nodeRole == ROLE_LEADER && role == ROLE_LEADER)
     discovery_elect();
@@ -215,11 +221,11 @@ void discovery_loop() {
   } else if (nodeRole == ROLE_FOLLOWER) {
     if (_leaderGoneAt == 0) {
       _leaderGoneAt = millis(); _inHold = true;
-      Serial.println("[Discovery] Leader signal lost — holding...");
+      if (logCfg.discoveryEvents) Serial.println("[Discovery] Leader signal lost — holding...");
     }
     if (_inHold && millis() - _leaderGoneAt > HOLD_DURATION_MS) {
       _inHold = false; _leaderGoneAt = 0;
-      Serial.println("[Discovery] Hold expired — re-electing...");
+      if (logCfg.discoveryEvents) Serial.println("[Discovery] Hold expired — re-electing...");
       discovery_elect();
     }
   }
@@ -230,7 +236,7 @@ void discovery_loop() {
     for (int i = 0; i < peerCount; i++) {
       if (peers[i].active && peers[i].role == ROLE_LEADER &&
           strcmp(peers[i].mac, ownMAC) < 0) {
-        Serial.printf("[Discovery] Better leader %s active — yielding\n", peers[i].mac);
+        if (logCfg.discoveryEvents) Serial.printf("[Discovery] Better leader %s active — yielding\n", peers[i].mac);
         discovery_elect();
         break;
       }

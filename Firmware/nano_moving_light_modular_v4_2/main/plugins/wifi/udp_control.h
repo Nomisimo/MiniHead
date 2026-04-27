@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFiUdp.h>
+#include "log_config.h"
 #include "discovery_globals.h"
 
 // Forward declaration — artnet_upsertPatch is defined in artnet_control.h
@@ -76,7 +77,7 @@ void udp_handlePacket(const char* data, int len) {
     const char* mac = buf + 12;
     if (strcmp(mac, ownMAC) == 0) {
       if (!_identifyActive) {
-        Serial.println("[UDP] IDENTIFY ON");
+        if (logCfg.udpVerbose) Serial.println("[UDP] IDENTIFY ON");
         _identifyActive = true;
         _preIdentR = curR; _preIdentG = curG; _preIdentB = curB; _preIdentW = curW;
       }
@@ -90,7 +91,7 @@ void udp_handlePacket(const char* data, int len) {
   if (strncmp(buf, "IDENTIFY_OFF|", 13) == 0) {
     const char* mac = buf + 13;
     if (strcmp(mac, ownMAC) == 0 && _identifyActive) {
-      Serial.println("[UDP] IDENTIFY OFF");
+      if (logCfg.udpVerbose) Serial.println("[UDP] IDENTIFY OFF");
       _identifyActive = false;
       setLED(_preIdentR, _preIdentG, _preIdentB, _preIdentW);
     }
@@ -117,6 +118,17 @@ void udp_handlePacket(const char* data, int len) {
       if (strncmp(cmd, "SETNAME:", 8) == 0) {
         discovery_saveName(cmd + 8);
         Serial.printf("[UDP] Name set to \"%s\"\n", ownName);
+        // ACK back so the PC UI can confirm the name was applied
+        {
+          char ack[48];
+          snprintf(ack, sizeof(ack), "NAMEACK|%s", ownMAC);
+          IPAddress _i=WiFi.localIP(), _m=WiFi.subnetMask();
+          IPAddress _b(_i[0]|(uint8_t)~_m[0], _i[1]|(uint8_t)~_m[1],
+                       _i[2]|(uint8_t)~_m[2], _i[3]|(uint8_t)~_m[3]);
+          _cmdUDP.beginPacket(_b, BEACON_PORT);
+          _cmdUDP.print(ack);
+          _cmdUDP.endPacket();
+        }
         return;
       }
       if (strncmp(cmd, "SETPATCH:", 9) == 0) {
@@ -124,9 +136,22 @@ void udp_handlePacket(const char* data, int len) {
         sscanf(cmd + 9, "%d,%d,%d", &fixID, &uni, &addr);
         artnet_upsertPatch(fixID, (uint16_t)uni, (uint16_t)addr);
         Serial.printf("[UDP] SETPATCH: Fix#%d U%d @%d\n", fixID, uni, addr);
+        // Send PATCHACK back via subnet broadcast so the PC leader can
+        // update the UI confirmation indicator.
+        {
+          char ack[64];
+          snprintf(ack, sizeof(ack), "PATCHACK|%s|%d", ownMAC, fixID);
+          IPAddress _i=WiFi.localIP(), _m=WiFi.subnetMask();
+          IPAddress _b(_i[0]|(uint8_t)~_m[0], _i[1]|(uint8_t)~_m[1],
+                       _i[2]|(uint8_t)~_m[2], _i[3]|(uint8_t)~_m[3]);
+          _cmdUDP.beginPacket(_b, BEACON_PORT);
+          _cmdUDP.print(ack);
+          _cmdUDP.endPacket();
+          if (logCfg.udpVerbose) Serial.printf("[UDP] PATCHACK sent Fix#%d\n", fixID);
+        }
         return;
       }
-      Serial.printf("[UDP] CMD for us: %s\n", cmd);
+      if (logCfg.udpVerbose) Serial.printf("[UDP] CMD for us: %s\n", cmd);
       applyCommand(String(cmd));
     }
     return;

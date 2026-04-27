@@ -109,12 +109,15 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
         <th>MAC</th>
         <th>IP</th>
         <th>Role</th>
+        <th>Uni</th>
+        <th>Addr</th>
+        <th></th>
         <th class="identify-col">Identify</th>
         <th></th><!-- patch button col -->
       </tr>
     </thead>
     <tbody id="nh_tbody">
-      <tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
+      <tr><td colspan="11" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
     </tbody>
   </table>
 </div>
@@ -129,6 +132,9 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
   var identTimers           = {};
   var patchMode             = false;
   var patchNextID           = 1;
+  var anPatches             = [];
+  var patchAcks             = {};  // fixID  \u2192 {status, ts}
+  var nameAcks              = {};  // mac    \u2192 {status, ts}
 
   // ── Boot ─────────────────────────────────────────────────────
   nh_load();
@@ -138,10 +144,28 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
   function nh_load() {
     Promise.all([
       fetch('/api/heads').then(function(r){return r.json();}),
-      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];})
+      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch/ack').then(function(r){return r.json();}).catch(function(){return{};}),
+      fetch('/api/heads/ack').then(function(r){return r.json();}).catch(function(){return{};})
     ]).then(function(res){
       headsData   = res[0];
       fixturePool = res[1];
+      anPatches   = res[2];
+      var sPA = res[3]||{}, sNA = res[4]||{};
+      Object.keys(sPA).forEach(function(k){
+        var s=sPA[k]; if(s.status==='ok'||s.status==='timeout') patchAcks[parseInt(k)]=s;
+      });
+      Object.keys(sNA).forEach(function(k){
+        var s=sNA[k]; if(s.status==='ok'||s.status==='timeout') nameAcks[k.toUpperCase()]=s;
+      });
+      var now=Date.now()/1000;
+      Object.keys(patchAcks).forEach(function(k){
+        var a=patchAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete patchAcks[k];
+      });
+      Object.keys(nameAcks).forEach(function(k){
+        var a=nameAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete nameAcks[k];
+      });
       nh_render();
     }).catch(function(){});
   }
@@ -272,7 +296,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 
     if (!headsData || !headsData.length) {
       var empty = document.createElement('tr');
-      empty.innerHTML = '<td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td>';
+      empty.innerHTML = '<td colspan="11" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td>';
       tbody.appendChild(empty);
     } else {
       var fixCount = {};
@@ -290,6 +314,31 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
         var tr  = document.createElement('tr');
         tr.dataset.mac = h.mac;
         if(sel) tr.className='selected-head';
+        // ── Art-Net patch columns ──────────────────────────────────
+        var anPatch = (h.fixID>0) ? anPatches.find(function(p){return p.fixID===h.fixID;}) : null;
+        var patchAckSt = patchAcks[h.fixID];
+        var patchIcon  = nh_ackIcon(patchAckSt);
+        var nameAckSt  = nameAcks[h.mac];
+        var nameIcon   = nh_ackIcon(nameAckSt);
+        var patchCells;
+        if(h.fixID>0 && anPatch){
+          patchCells=
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+anPatch.universe+'" min="0" max="32767"'+
+                ' onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--accent);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+anPatch.startAddr+'" min="1" max="512"'+
+                ' onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
+            '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+h.fixID+')">&#10005;</button>'+patchIcon+'</td>';
+        } else if(h.fixID>0){
+          patchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
+        } else {
+          patchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td></td>';
+        }
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+
               ' onchange="nh_toggleSel(\''+h.mac+'\',this.checked)"></td>'+
@@ -298,11 +347,12 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
               (dup?' title="WARNING: Duplicate FixID"':'')+
               ' onchange="nh_setFixID(\''+h.mac+'\',this.value)">'+(dup?'<span class="dup-warn">DUP</span>':'')+
           '</td>'+
-          '<td><input class="name-input" type="text" value="'+esc(h.name||'')+'"'+
-              ' placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)"></td>'+
+          '<td style="white-space:nowrap;"><input class="name-input" type="text" value="'+esc(h.name||'')+'"'+
+              ' placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)">'+nameIcon+'</td>'+
           '<td style="color:var(--text-dim);" title="'+h.mac+'">\u2026'+h.mac.slice(-8)+'</td>'+
           '<td style="color:var(--accent);">'+h.ip+'</td>'+
           '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span></td>'+
+          patchCells+
           '<td class="identify-col"><button class="identify-btn" data-mac="'+h.mac+'"'+
             ' onmousedown="nh_identStart(\''+h.mac+'\')"'+
             ' onmouseup="nh_identStop(\''+h.mac+'\')"'+
@@ -324,12 +374,31 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
     });
     if(offline.length>0){
       var sep=document.createElement('tr');
-      sep.innerHTML='<td colspan="8" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">\u2500\u2500 OFFLINE \u2500\u2500</td>';
+      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">\u2500\u2500 OFFLINE \u2500\u2500</td>';
       tbody.appendChild(sep);
       offline.forEach(function(f){
         var sel=selectedOfflineFixIDs.indexOf(f.id)>=0;
         var tr=document.createElement('tr');
-        tr.style.opacity='0.55';
+        tr.style.opacity='0.6';
+        var offPatch = (f.id>0) ? anPatches.find(function(p){return p.fixID===f.id;}) : null;
+        var offPatchAckSt = patchAcks[f.id];
+        var offPatchIcon  = nh_ackIcon(offPatchAckSt);
+        var offPatchCells;
+        if(offPatch){
+          offPatchCells=
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+offPatch.universe+'" min="0" max="32767"'+
+                ' onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--accent);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+offPatch.startAddr+'" min="1" max="512"'+
+                ' onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
+            '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
+        } else if(f.id>0){
+          offPatchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
+        } else {
+          offPatchCells='<td>\u2014</td><td>\u2014</td><td></td>';
+        }
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+
               ' onchange="nh_toggleOffline('+f.id+',this.checked)"></td>'+
@@ -339,7 +408,8 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
           '<td style="color:var(--text-dim);">'+(f.mac?('\u2026'+f.mac.slice(-8)):'\u2014')+'</td>'+
           '<td>\u2014</td>'+
           '<td><span class="role-badge" style="background:rgba(107,107,138,0.15);color:var(--text-dim)">OFFLINE</span></td>'+
-          '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" title="Remove" style="color:var(--danger);border-color:var(--danger);">\u2715</button></td>'+
+          offPatchCells+
+          '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" title="Remove" style="color:var(--danger);border-color:var(--danger);">&#10005;</button></td>'+
           '<td></td>';
         tbody.appendChild(tr);
       });
@@ -355,7 +425,7 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
           ' class="add-input" style="width:78px;"></td>'+
       '<td><input type="text" id="nh_newMac" placeholder="MAC (opt)"'+
           ' class="add-input" style="width:88px;font-size:10px;color:var(--text-dim);"></td>'+
-      '<td colspan="2"></td>'+
+      '<td colspan="5"></td>'+
       '<td class="identify-col"><button class="identify-btn" onclick="nh_addFixture()" style="color:var(--success);border-color:var(--success);">+</button></td>'+
       '<td></td>';
     tbody.appendChild(addRow);
@@ -463,12 +533,14 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 
   // ── Name ─────────────────────────────────────────────────────
   window.nh_setName = function(mac, name) {
+    var isOnline = headsData.some(function(h){return h.mac===mac;});
+    if(isOnline){ nameAcks[mac]={status:'pending',ts:Date.now()/1000}; nh_render(); }
     fetch('/api/heads/'+mac+'/name',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:name})
     }).then(function(){
       headsData.forEach(function(h){if(h.mac===mac)h.name=name;});
-      if(typeof toast==='function') toast('Name saved');
+      if(typeof toast==='function') toast(isOnline?'Name sent \u2014 waiting for ESP\u2026':'Name saved');
     });
   };
 
@@ -574,6 +646,63 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
       return h?h.fixID:0;
     }).filter(function(id){return id>0;});
     return online.concat(selectedOfflineFixIDs.filter(function(id){return online.indexOf(id)<0;}));
+  };
+
+  // ── ACK icon helper ──────────────────────────────────────────────
+  function nh_ackIcon(ack){
+    if(!ack) return '';
+    var age = Date.now()/1000 - (ack.ts||0);
+    if(ack.status==='pending')
+      return '<span style="color:var(--accent2);font-size:12px;margin-left:3px;" title="Waiting for ESP\u2026">&#8635;</span>';
+    if(ack.status==='ok'&&age<5)
+      return '<span style="color:#4ade80;font-size:12px;margin-left:3px;" title="ESP confirmed">&#10003;</span>';
+    if(ack.status==='timeout')
+      return '<span style="color:var(--danger);font-size:12px;margin-left:3px;" title="No response from ESP">&#10007;</span>';
+    return '';
+  }
+
+  // ── Art-Net patch inline CRUD ────────────────────────────────────
+  window.nh_patchUpdate = function(fixID, uni, addr) {
+    var p = anPatches.find(function(x){return x.fixID===fixID;});
+    if(!p) return;
+    var isOnline = headsData.some(function(h){return h.fixID===fixID;});
+    if(isOnline){ patchAcks[fixID]={status:'pending',ts:Date.now()/1000}; nh_render(); }
+    var data = {universe:uni!==null?uni:p.universe, startAddr:addr!==null?addr:p.startAddr};
+    fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
+        p.universe=data.universe; p.startAddr=data.startAddr;
+        if(typeof toast==='function') toast(isOnline?'Patch sent \u2014 waiting for ESP\u2026':'Patch saved (ESP offline \u2014 will sync on reconnect)');
+      }
+    });
+  };
+  window.nh_patchDel = function(fixID) {
+    fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
+      anPatches = anPatches.filter(function(p){return p.fixID!==fixID;});
+      delete patchAcks[fixID];
+      nh_render();
+      if(typeof toast==='function') toast('Patch removed');
+    });
+  };
+  window.nh_patchCreate = function(fixID) {
+    var used = anPatches.filter(function(p){return p.universe===0;});
+    var addr = 1;
+    used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){
+      if(p.startAddr<=addr && addr<p.startAddr+7) addr=p.startAddr+7;
+    });
+    if(addr+6>512){ if(typeof toast==='function') toast('Universe 0 full','err'); return; }
+    var isOnline2 = headsData.some(function(h){return h.fixID===fixID;});
+    fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fixID:fixID,universe:0,startAddr:addr})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
+        anPatches.push({fixID:fixID,universe:0,startAddr:addr});
+        if(isOnline2) patchAcks[fixID]={status:'pending',ts:Date.now()/1000};
+        nh_render();
+        if(typeof toast==='function') toast(isOnline2?'Patched Fix#'+fixID+' \u2192 Uni 0 Addr '+addr+' \u2014 waiting for ESP\u2026':'Patch saved for Fix#'+fixID+' (ESP offline)');
+      } else if(typeof toast==='function') toast(d.message||'Error','err');
+    });
   };
 
 })(); // end IIFE

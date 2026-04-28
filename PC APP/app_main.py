@@ -9,6 +9,7 @@ Build with: pyinstaller minihead.spec --clean --noconfirm
 import threading
 import logging
 import sys
+from flaskwebgui import FlaskUI
 
 
 def main():
@@ -35,7 +36,6 @@ def main():
     print(f"[PC Leader] MAC:  {pc_leader.OWN_MAC}")
     print(f"[PC Leader] IP:   {pc_leader.OWN_IP}")
 
-    from flaskwebgui import FlaskUI
     ui = FlaskUI(
         app=pc_leader.app,
         server="flask",

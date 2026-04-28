@@ -1,0 +1,49 @@
+name: Firmware — Release
+
+on:
+  push:
+    tags:
+      - "fw/v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package firmware source
+        run: |
+          # Latest firmware folder is nano_moving_light_modular_v4_2
+          # We zip the source so users can open it in Arduino IDE
+          zip -r MiniHead-Firmware-${{ github.ref_name }}.zip \
+            Firmware/nano_moving_light_modular_v4_2/ \
+            --exclude "*/config.h" \
+            --exclude "*/.DS_Store" \
+            --exclude "*/*.FCBak"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "MiniHead Firmware ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## MiniHead Firmware ${{ github.ref_name }}
+
+            ESP32 firmware for the MiniHead moving light.
+
+            ### How to flash
+
+            1. Download and unzip `MiniHead-Firmware-${{ github.ref_name }}.zip`
+            2. Copy `config.example.h` → `config.h` and fill in your WiFi credentials
+            3. Open `main/main.ino` in the Arduino IDE
+            4. Install board: **ESP32 by Espressif** via Board Manager
+            5. Select board **ESP32 Dev Module**, upload
+
+            > `config.h` is not included in this release — it contains your personal WiFi credentials.
+          files: MiniHead-Firmware-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false

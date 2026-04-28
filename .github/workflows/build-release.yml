@@ -1,9 +1,9 @@
-name: Build & Release
+name: PC App — Build & Release
 
 on:
   push:
     tags:
-      - "v*"
+      - "pc/v*"
 
 permissions:
   contents: write
@@ -68,6 +68,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "MiniHead Control ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
           body: |
             ## MiniHead Control ${{ github.ref_name }}
 

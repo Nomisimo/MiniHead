@@ -54,6 +54,16 @@ jobs:
         working-directory: "PC APP"
         run: python3 -m PyInstaller minihead.spec --clean --noconfirm
 
+      - name: Sign app (macOS)
+        if: runner.os == 'macOS'
+        working-directory: "PC APP/dist"
+        run: codesign --deep --force --sign - "MiniHead Control.app"
+
+      - name: Sign app (macOS)
+        if: runner.os == 'macOS'
+        working-directory: "PC APP/dist"
+        run: codesign --deep --force --sign - "MiniHead Control.app"
+
       - name: Zip artifact (macOS)
         if: runner.os == 'macOS'
         working-directory: "PC APP/dist"

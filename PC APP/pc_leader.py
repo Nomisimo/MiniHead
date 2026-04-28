@@ -20,12 +20,49 @@ import threading
 import time
 import json
 import os
+import sys
 import logging
 import urllib.request
+from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 
 # ── Version ───────────────────────────────────────────────────────
 APP_VERSION = "PC App v4.2"
+
+# ── Data & static file paths ──────────────────────────────────────
+def _app_data_dir() -> Path:
+    """Return a writable per-user data directory and migrate legacy JSON files on first run."""
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support" / "MiniHead"
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", str(Path.home()))) / "MiniHead"
+    else:
+        base = Path.home() / ".minihead"
+    base.mkdir(parents=True, exist_ok=True)
+
+    # One-time migration: copy JSON files from the old script-adjacent location
+    old_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    for fname in ["pc_data.json", "pc_cues.json", "pc_log_flags.json",
+                  "pc_fixtures.json", "pc_artnet_patch.json", "pc_mac_names.json"]:
+        old_path = old_dir / fname
+        new_path = base / fname
+        if old_path.exists() and not new_path.exists():
+            import shutil
+            shutil.copy2(old_path, new_path)
+
+    return base
+
+def _bundle_dir() -> str:
+    """Return the directory containing index.html and plugins/ (works frozen + dev)."""
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+_DATA_DIR   = _app_data_dir()
+_STATIC_ROOT = _bundle_dir()
+
+# Bind host: loopback when packaged (avoids OS firewall prompt), all interfaces in dev
+_BIND_HOST = "127.0.0.1" if getattr(sys, "frozen", False) else "0.0.0.0"
 
 # ── Config ────────────────────────────────────────────────────────
 BEACON_PORT   = 4210
@@ -33,13 +70,13 @@ CMD_PORT      = 4211
 BEACON_INTERVAL = 1.0       # seconds
 PEER_TIMEOUT    = 12.0      # seconds before peer is removed (ESP32 beacons every 2s)
 OWN_FIX_ID      = 0         # set your fixture ID here
-CUES_FILE      = "pc_cues.json"
-DATA_FILE      = "pc_data.json"       # unified device data (replaces the three below)
-LOG_FLAGS_FILE = "pc_log_flags.json"
+CUES_FILE      = str(_DATA_DIR / "pc_cues.json")
+DATA_FILE      = str(_DATA_DIR / "pc_data.json")       # unified device data (replaces the three below)
+LOG_FLAGS_FILE = str(_DATA_DIR / "pc_log_flags.json")
 # Legacy files — kept for one-time migration only; new installs use DATA_FILE
-_LEGACY_FIXTURES_FILE     = "pc_fixtures.json"
-_LEGACY_ARTNET_PATCH_FILE = "pc_artnet_patch.json"
-_LEGACY_MAC_NAMES_FILE    = "pc_mac_names.json"
+_LEGACY_FIXTURES_FILE     = str(_DATA_DIR / "pc_fixtures.json")
+_LEGACY_ARTNET_PATCH_FILE = str(_DATA_DIR / "pc_artnet_patch.json")
+_LEGACY_MAC_NAMES_FILE    = str(_DATA_DIR / "pc_mac_names.json")
 
 # ── PC Log configuration ──────────────────────────────────────────
 # Must be defined early — module-level code below (UDP socket) uses pc_log().
@@ -789,19 +826,23 @@ app = Flask(__name__)
 # ── Serve Web UI ──────────────────────────────────────────────────
 @app.route("/")
 def serve_ui():
-    return send_from_directory(".", "index.html")
+    return send_from_directory(_STATIC_ROOT, "index.html")
+
+@app.route("/fonts/<path:filename>")
+def serve_fonts(filename):
+    return send_from_directory(os.path.join(_STATIC_ROOT, "fonts"), filename)
 
 @app.route("/plugins/wifi/discovery_panel.html")
 def serve_discovery_panel():
-    return send_from_directory("plugins/wifi", "discovery_panel.html")
+    return send_from_directory(os.path.join(_STATIC_ROOT, "plugins", "wifi"), "discovery_panel.html")
 
 @app.route("/plugins/artnet/artnet_panel.html")
 def serve_artnet_panel():
-    return send_from_directory("plugins/artnet", "artnet_panel.html")
+    return send_from_directory(os.path.join(_STATIC_ROOT, "plugins", "artnet"), "artnet_panel.html")
 
 @app.route("/plugins/log/log_panel.html")
 def serve_log_panel():
-    return send_from_directory("plugins/log", "log_panel.html")
+    return send_from_directory(os.path.join(_STATIC_ROOT, "plugins", "log"), "log_panel.html")
 
 # ── /api/logconfig  (PC log flags) ───────────────────────────────
 @app.route("/api/logconfig", methods=["GET"])
@@ -1409,4 +1450,4 @@ if __name__ == "__main__":
     print(f"[PC Leader] Open: http://localhost:8080")
     print(f"[PC Leader] Beaconing on port {BEACON_PORT}, CMD on port {CMD_PORT}")
 
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    app.run(host=_BIND_HOST, port=8080, debug=False)

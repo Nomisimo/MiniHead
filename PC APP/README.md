@@ -9,7 +9,7 @@ manages fixtures, Art-Net patching, cues, and sequencer.
 
 ### macOS
 
-1. Download `MiniHead-Control-mac.zip` from the [Releases page](../../releases)
+1. Download `MiniHead-Control-mac.zip` from the [Releases page](https://github.com/Nomisimo/MiniHead/releases)
 2. Unzip and drag **MiniHead Control.app** to your Applications folder
 3. **First launch:** right-click the app → **Open** → confirm the security dialog
    *(macOS blocks unsigned apps from unknown developers — this is a one-time step)*
@@ -19,7 +19,7 @@ Your settings and cues are saved in `~/Library/Application Support/MiniHead/`.
 
 ### Windows
 
-1. Download `MiniHead-Control-win.zip` from the [Releases page](../../releases)
+1. Download `MiniHead-Control-win.zip` from the [Releases page](https://github.com/Nomisimo/MiniHead/releases)
 2. Unzip the folder to any location (e.g. `C:\Program Files\MiniHead Control\`)
 3. Run **MiniHead Control.exe**
 4. If Windows SmartScreen appears, click **More info → Run anyway**

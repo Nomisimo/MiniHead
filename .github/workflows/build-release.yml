@@ -17,11 +17,8 @@ jobs:
       matrix:
         include:
           - os: [self-hosted, macOS, X64]
-            artifact_name: MiniHead-Control-mac-intel.zip
+            artifact_name: MiniHead-Control-mac.zip
             self_hosted: true
-          - os: macos-latest
-            artifact_name: MiniHead-Control-mac-arm.zip
-            self_hosted: false
           - os: windows-latest
             artifact_name: MiniHead-Control-win.zip
             self_hosted: false
@@ -31,13 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # GitHub-hosted runners: install specific Python version
       - uses: actions/setup-python@v5
         if: ${{ !matrix.self_hosted }}
         with:
           python-version: "3.11"
 
-      # Self-hosted runner: use system Python (already installed on Mac)
       - name: Verify Python (self-hosted)
         if: ${{ matrix.self_hosted }}
         run: python3 --version
@@ -53,11 +48,6 @@ jobs:
       - name: Build with PyInstaller
         working-directory: "PC APP"
         run: python3 -m PyInstaller minihead.spec --clean --noconfirm
-
-      - name: Sign app (macOS)
-        if: runner.os == 'macOS'
-        working-directory: "PC APP/dist"
-        run: codesign --deep --force --sign - "MiniHead Control.app"
 
       - name: Sign app (macOS)
         if: runner.os == 'macOS'
@@ -102,8 +92,7 @@ jobs:
             ### Download
             | Platform | File |
             |----------|------|
-            | macOS — Intel (2019 und älter) | `MiniHead-Control-mac-intel.zip` |
-            | macOS — Apple Silicon M1/M2/M3 | `MiniHead-Control-mac-arm.zip` |
+            | macOS (Intel) | `MiniHead-Control-mac.zip` |
             | Windows 10/11 | `MiniHead-Control-win.zip` |
 
             **macOS:** Unzip → App in Programme-Ordner → Rechtsklick → Öffnen (einmalig beim ersten Start)
@@ -111,8 +100,7 @@ jobs:
 
             See the [README](https://github.com/${{ github.repository }}/blob/main/PC%20APP/README.md) for full install instructions.
           files: |
-            MiniHead-Control-mac-intel.zip
-            MiniHead-Control-mac-arm.zip
+            MiniHead-Control-mac.zip
             MiniHead-Control-win.zip
           draft: false
           prerelease: false

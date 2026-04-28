@@ -16,12 +16,12 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: macos-13
+            artifact_name: MiniHead-Control-mac-intel.zip
           - os: macos-latest
-            artifact_name: MiniHead-Control-mac.zip
-            pywebview_extra: ""
+            artifact_name: MiniHead-Control-mac-arm.zip
           - os: windows-latest
             artifact_name: MiniHead-Control-win.zip
-            pywebview_extra: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -82,12 +82,17 @@ jobs:
             ### Download
             | Platform | File |
             |----------|------|
-            | macOS    | `MiniHead-Control-mac.zip` — unzip, drag to Applications, right-click → Open on first launch |
-            | Windows  | `MiniHead-Control-win.zip` — unzip, run `MiniHead Control.exe` |
+            | macOS — Intel (2019 und älter) | `MiniHead-Control-mac-intel.zip` |
+            | macOS — Apple Silicon M1/M2/M3 | `MiniHead-Control-mac-arm.zip` |
+            | Windows 10/11 | `MiniHead-Control-win.zip` |
+
+            **macOS:** Unzip → App in Programme-Ordner → Rechtsklick → Öffnen (einmalig beim ersten Start)
+            **Windows:** Unzip → `MiniHead Control.exe` starten
 
             See the [README](https://github.com/${{ github.repository }}/blob/main/PC%20APP/README.md) for full install instructions.
           files: |
-            MiniHead-Control-mac.zip
+            MiniHead-Control-mac-intel.zip
+            MiniHead-Control-mac-arm.zip
             MiniHead-Control-win.zip
           draft: false
           prerelease: false

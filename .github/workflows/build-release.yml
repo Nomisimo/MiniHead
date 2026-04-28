@@ -34,7 +34,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: "PC APP"
-        run: pip install flask pyinstaller
+        run: pip install flask pyinstaller pillow
+
+      - name: Convert icon
+        working-directory: "PC APP"
+        run: python assets/convert_icon.py
 
       - name: Build with PyInstaller
         working-directory: "PC APP"

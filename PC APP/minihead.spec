@@ -4,9 +4,14 @@
 #         dist/MiniHead Control.app  (Mac only)
 
 import sys
+import os
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
+
+_icon_ico  = "assets/icon.ico"  if os.path.exists("assets/icon.ico")  else None
+_icon_icns = "assets/icon.icns" if os.path.exists("assets/icon.icns") else None
+_icon = _icon_icns if sys.platform == "darwin" else _icon_ico
 
 a = Analysis(
     ["app_main.py"],
@@ -44,8 +49,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,   # set True temporarily to see startup errors
-    icon=None,       # replace with "assets/icon.icns" / "assets/icon.ico" if you have one
+    console=False,
+    icon=_icon,
 )
 
 coll = COLLECT(
@@ -64,7 +69,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="MiniHead Control.app",
-        icon=None,   # replace with "assets/icon.icns" if you have one
+        icon=_icon_icns,
         bundle_identifier="com.minihead.control",
         info_plist={
             "NSHighResolutionCapable": True,

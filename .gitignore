@@ -15,6 +15,16 @@ PC APP/build/
 PC APP/dist/
 *.spec.bak
 
+# Python cache
+PC APP/__pycache__/
+PC APP/*.pyc
+
+# Runtime data files
+PC APP/pc_data.json
+
+# Old 3D model exports
+3d-models/Old Stepfiles/
+
 # Claude internal
 .claude/
 .claire/

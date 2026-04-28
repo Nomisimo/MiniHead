@@ -42,23 +42,17 @@ def _setup_log_file():
 
 
 def _find_browser():
-    if sys.platform == "win32":
-        candidates = [
-            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
-            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
-            os.path.expandvars(r"%LocalAppData%\Microsoft\Edge\Application\msedge.exe"),
-            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
-            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
-        ]
-    elif sys.platform == "darwin":
-        candidates = [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        ]
-    else:
-        candidates = []
+    """On Windows: find Edge/Chrome for --app mode. On Mac: use default browser."""
+    if sys.platform != "win32":
+        return None  # Mac/Linux: webbrowser.open() respects default browser (Safari etc.)
 
+    candidates = [
+        os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%LocalAppData%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+    ]
     for path in candidates:
         if os.path.isfile(path):
             return path

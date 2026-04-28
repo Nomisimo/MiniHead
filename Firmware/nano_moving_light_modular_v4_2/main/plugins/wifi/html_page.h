@@ -20,7 +20,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     --mono:'Share Tech Mono',monospace;--sans:'Barlow',sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;overflow-x:hidden;}
   body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:1000;}
 
   /* ── Header ── */
@@ -33,7 +33,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .ip-label{color:var(--accent);}
 
   /* ── Buttons ── */
-  .btn{padding:8px 16px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:12px;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:all 0.15s;text-transform:uppercase;touch-action:manipulation;}
+  .btn{padding:9px 18px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:13px;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:all 0.15s;text-transform:uppercase;touch-action:manipulation;}
   .btn:active{opacity:0.7;}
   .btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08);}
   .btn.danger{border-color:var(--danger);color:var(--danger);}
@@ -41,9 +41,10 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .btn.active{background:rgba(168,85,247,0.2);border-color:var(--accent3);color:var(--accent3);}
 
   /* ── Panel ── */
-  .panel{background:var(--bg);padding:16px;border-bottom:1px solid var(--border);}
+  .panel{background:var(--bg);padding:20px 24px;border-bottom:1px solid var(--border);}
   .panel:last-child{border-bottom:none;}
-  .panel-title{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .panel-title{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;}
+  hr{border:none;border-top:1px solid var(--border);margin:0 0 18px;}
 
   /* ── MAIN GRID ── */
   .main{
@@ -84,8 +85,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .area-future    {grid-area:future;}
 
   /* ── RGBW Faders ── */
-  .faders-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;}
-  .fader-group{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .faders-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end;}
+  .fader-group{display:flex;flex-direction:column;align-items:center;gap:10px;}
   .fader-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;}
   .vslider-wrap{width:36px;height:140px;display:flex;align-items:center;justify-content:center;}
   input[type=range].vertical{writing-mode:vertical-lr;direction:rtl;width:36px;height:140px;-webkit-appearance:slider-vertical;appearance:slider-vertical;cursor:pointer;}
@@ -95,12 +96,12 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .fader-g input[type=range]::-webkit-slider-thumb{background:#44ff44;box-shadow:0 0 12px #44ff44;}
   .fader-b input[type=range]::-webkit-slider-thumb{background:#4488ff;box-shadow:0 0 12px #4488ff;}
   .fader-w input[type=range]::-webkit-slider-thumb{background:#ffffff;box-shadow:0 0 12px #ffffff;}
-  input[type=number]{width:44px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 2px;font-family:var(--mono);font-size:14px;border-radius:4px;outline:none;text-align:center;}
+  input[type=number]{width:44px;background:#ffffff17;border:1px solid #ffffff17;color:var(--text);padding:7px 4px;font-family:var(--mono);font-size:13px;border-radius:5px;outline:none;text-align:center;}
   .preview-row{display:flex;justify-content:center;margin-top:16px;}
   .led-preview{width:64px;height:64px;border-radius:50%;border:2px solid var(--border);transition:background 0.1s,box-shadow 0.1s;background:#000;}
 
   /* ── Motion ── */
-  .motion-row{display:grid;grid-template-columns:40px 1fr 52px;align-items:center;gap:10px;margin-bottom:14px;}
+  .motion-row{display:grid;grid-template-columns:48px 1fr 60px;align-items:center;gap:14px;margin-bottom:14px;}
   .motion-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:2px;}
   input[type=range].horizontal{-webkit-appearance:none;appearance:none;width:100%;height:6px;background:var(--surface2);border-radius:3px;outline:none;cursor:pointer;}
   input[type=range].horizontal::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--accent2);box-shadow:0 0 10px var(--accent2);border:2px solid var(--bg);}
@@ -114,7 +115,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .cue-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:300px;overflow-y:auto;}
   .cue-list::-webkit-scrollbar{width:4px;}
   .cue-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-  .cue-item{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:default;}
+  .cue-item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface2);border:2px solid var(--border);border-radius:5px;cursor:default;}
   .cue-item.seq-selected{border-color:var(--accent3);background:rgba(168,85,247,0.1);}
   .cue-item.drag-over{border-color:var(--accent);background:rgba(99,102,241,0.15);}
   .cue-item.dragging{opacity:0.4;}
@@ -124,16 +125,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .cue-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .cue-meta{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px;}
   .cue-actions{display:flex;gap:4px;}
-  .icon-btn{width:32px;height:32px;border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;touch-action:manipulation;}
-  .save-cue-form{display:flex;gap:8px;}
-  input[type=text]{flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-family:var(--mono);font-size:13px;border-radius:4px;outline:none;}
+  .icon-btn{width:34px;height:34px;border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;touch-action:manipulation;}
+  .save-cue-form{display:flex;gap:10px;}
+  input[type=text]{flex:1;background:#ffffff17;border:1px solid #ffffff17;color:var(--text);padding:8px 10px;font-family:var(--mono);font-size:13px;border-radius:5px;outline:none;}
 
   /* ── Sequencer ── */
   .seq-controls{display:flex;flex-direction:column;gap:10px;}
   .seq-row{display:flex;align-items:center;gap:8px;}
   .seq-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);width:60px;flex-shrink:0;}
   .seq-buttons{display:flex;gap:8px;margin-top:10px;}
-  .seq-buttons .btn{flex:1;padding:12px;text-align:center;}
+  .seq-buttons .btn{flex:1;padding:11px;text-align:center;}
   .seq-hint{font-size:11px;color:var(--text-dim);margin-bottom:10px;}
 
   /* ── Future placeholder ── */
@@ -189,7 +190,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Cues -->
   <div class="panel area-cues">
-    <div class="panel-title">// Cues</div>
+    <div class="panel-title">// Cues</div><hr>
     <div class="cue-list" id="cueList"></div>
     <div class="save-cue-form">
       <input type="text" id="cueName" placeholder="Cue name..." maxlength="30">
@@ -199,7 +200,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Sequencer -->
   <div class="panel area-sequencer">
-    <div class="panel-title">// Sequencer</div>
+    <div class="panel-title">// Sequencer</div><hr>
     <div class="seq-hint">Tap + on cues to add to sequence</div>
     <div class="seq-controls">
       <div class="seq-row">
@@ -239,7 +240,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Light Control -->
   <div class="panel area-light col-right">
-    <div class="panel-title">// Light Control</div>
+    <div class="panel-title">// Light Control</div><hr>
     <div class="faders-row">
       <div class="fader-group fader-r">
         <div class="fader-label">RED</div>
@@ -267,7 +268,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Motion -->
   <div class="panel area-motion col-right">
-    <div class="panel-title">// Motion</div>
+    <div class="panel-title">// Motion</div><hr>
     <div class="motion-row">
       <div class="motion-label">PAN</div>
       <input type="range" class="horizontal" min="0" max="180" value="90" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
@@ -287,7 +288,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Serial -->
   <div class="panel area-serial col-right">
-    <div class="panel-title">// Serial</div>
+    <div class="panel-title">// Serial</div><hr>
     <div class="serial-row">
       <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45">
       <button class="btn primary" onclick="sendRaw()">SEND</button>

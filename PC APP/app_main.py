@@ -45,7 +45,9 @@ def main():
         height=900,
         resizable=True,
     )
-    webview.start()
+    # Force Edge WebView2 on Windows — avoids the pythonnet/winforms .NET error
+    gui = "edgechromium" if sys.platform == "win32" else None
+    webview.start(gui=gui)
 
 
 if __name__ == "__main__":

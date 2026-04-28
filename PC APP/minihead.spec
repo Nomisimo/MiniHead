@@ -23,8 +23,7 @@ a = Analysis(
         *collect_submodules("werkzeug"),
         "webview",
         "webview.platforms.cocoa",
-        "webview.platforms.winforms",
-        "clr",         # pywebview Windows backend
+        "webview.platforms.edgechromium",
     ],
     hookspath=[],
     hooksconfig={},

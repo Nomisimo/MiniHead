@@ -29,9 +29,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
         working-directory: "PC APP"
         run: pip install flask "pywebview>=5.0" pyinstaller
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        working-directory: "PC APP"
+        run: pip install flask "pywebview[edgechromium]>=5.0" pyinstaller
 
       - name: Build with PyInstaller
         working-directory: "PC APP"

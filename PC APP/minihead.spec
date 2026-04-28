@@ -21,9 +21,7 @@ a = Analysis(
     hiddenimports=[
         *collect_submodules("flask"),
         *collect_submodules("werkzeug"),
-        "webview",
-        "webview.platforms.cocoa",
-        "webview.platforms.edgechromium",
+        *collect_submodules("flaskwebgui"),
     ],
     hookspath=[],
     hooksconfig={},

@@ -1,53 +1,51 @@
 #!/usr/bin/env python3
 """
 app_main.py — MiniHead Control desktop entry point.
-Starts the Flask server in a background thread, then opens a native OS window.
+Opens the app in Chrome/Edge app-mode window (no .NET / WebView2 runtime needed).
 Run with:  python app_main.py
 Build with: pyinstaller minihead.spec --clean --noconfirm
 """
 
 import threading
-import time
-import socket
+import logging
 import sys
 
 
-def _wait_for_flask(host: str, port: int, retries: int = 50, delay: float = 0.1) -> bool:
-    for _ in range(retries):
-        try:
-            socket.create_connection((host, port), timeout=0.1).close()
-            return True
-        except OSError:
-            time.sleep(delay)
-    return False
-
-
 def main():
-    import pc_leader  # noqa: registers all Flask routes as a side effect
+    import pc_leader
 
-    flask_thread = threading.Thread(
-        target=lambda: pc_leader.app.run(
-            host="127.0.0.1", port=8080, debug=False, use_reloader=False
-        ),
-        daemon=True,
+    # Mirror the log-level setup from pc_leader's __main__ block
+    with pc_leader._log_flags_lock:
+        http_on = pc_leader._log_flags.get("http", False)
+    logging.getLogger("werkzeug").setLevel(
+        logging.DEBUG if http_on else logging.WARNING
     )
-    flask_thread.start()
 
-    if not _wait_for_flask("127.0.0.1", 8080):
-        print("[MiniHead] ERROR: Flask did not start in time", file=sys.stderr)
-        sys.exit(1)
+    # Load persisted data
+    pc_leader.load_cues()
+    pc_leader.load_data()
 
-    import webview
-    webview.create_window(
-        "MiniHead Control",
-        "http://127.0.0.1:8080",
+    # Start background services
+    threading.Thread(target=pc_leader.beacon_sender,    daemon=True).start()
+    threading.Thread(target=pc_leader.beacon_receiver,  daemon=True).start()
+    threading.Thread(target=pc_leader.sequencer_runner, daemon=True).start()
+    threading.Thread(target=pc_leader.artnet_sniffer,   daemon=True).start()
+
+    print(f"[PC Leader] {pc_leader.APP_VERSION}")
+    print(f"[PC Leader] MAC:  {pc_leader.OWN_MAC}")
+    print(f"[PC Leader] IP:   {pc_leader.OWN_IP}")
+
+    from flaskwebgui import FlaskUI
+    ui = FlaskUI(
+        app=pc_leader.app,
+        server="flask",
+        host="127.0.0.1",
+        port=8080,
         width=1280,
         height=900,
-        resizable=True,
+        fullscreen=False,
     )
-    # Force Edge WebView2 on Windows — avoids the pythonnet/winforms .NET error
-    gui = "edgechromium" if sys.platform == "win32" else None
-    webview.start(gui=gui)
+    ui.run()
 
 
 if __name__ == "__main__":

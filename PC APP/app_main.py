@@ -113,16 +113,18 @@ def main():
         browser = _find_browser()
         if browser:
             print(f"[MiniHead] Opening {browser}")
-            proc = subprocess.Popen([browser, f"--app={URL}", "--new-window"])
-            proc.wait()
+            subprocess.Popen([browser, f"--app={URL}", "--new-window"])
         else:
             webbrowser.open(URL)
-            print(f"[MiniHead] Running at {URL}  (Ctrl+C to quit)")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
+
+        # Keep the server alive regardless of what the browser process does.
+        # (Edge may reuse an existing process and return immediately.)
+        print(f"[MiniHead] Server running — close this process to quit")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
     except Exception:
         traceback.print_exc()

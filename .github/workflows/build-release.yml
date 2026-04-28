@@ -1,0 +1,85 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: MiniHead-Control-mac.zip
+            pywebview_extra: ""
+          - os: windows-latest
+            artifact_name: MiniHead-Control-win.zip
+            pywebview_extra: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: "PC APP"
+        run: pip install flask "pywebview>=5.0" pyinstaller
+
+      - name: Build with PyInstaller
+        working-directory: "PC APP"
+        run: pyinstaller minihead.spec --clean --noconfirm
+
+      - name: Zip artifact (macOS)
+        if: runner.os == 'macOS'
+        working-directory: "PC APP/dist"
+        run: zip -r "../../${{ matrix.artifact_name }}" "MiniHead Control.app"
+
+      - name: Zip artifact (Windows)
+        if: runner.os == 'Windows'
+        working-directory: "PC APP/dist"
+        shell: pwsh
+        run: Compress-Archive -Path "MiniHead Control" -DestinationPath "../../${{ matrix.artifact_name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "MiniHead Control ${{ github.ref_name }}"
+          body: |
+            ## MiniHead Control ${{ github.ref_name }}
+
+            ### Download
+            | Platform | File |
+            |----------|------|
+            | macOS    | `MiniHead-Control-mac.zip` — unzip, drag to Applications, right-click → Open on first launch |
+            | Windows  | `MiniHead-Control-win.zip` — unzip, run `MiniHead Control.exe` |
+
+            See the [README](https://github.com/${{ github.repository }}/blob/main/PC%20APP/README.md) for full install instructions.
+          files: |
+            MiniHead-Control-mac.zip
+            MiniHead-Control-win.zip
+          draft: false
+          prerelease: false

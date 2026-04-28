@@ -18,31 +18,41 @@ jobs:
         include:
           - os: [self-hosted, macOS, X64]
             artifact_name: MiniHead-Control-mac-intel.zip
+            self_hosted: true
           - os: macos-latest
             artifact_name: MiniHead-Control-mac-arm.zip
+            self_hosted: false
           - os: windows-latest
             artifact_name: MiniHead-Control-win.zip
+            self_hosted: false
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
+      # GitHub-hosted runners: install specific Python version
       - uses: actions/setup-python@v5
+        if: ${{ !matrix.self_hosted }}
         with:
           python-version: "3.11"
 
+      # Self-hosted runner: use system Python (already installed on Mac)
+      - name: Verify Python (self-hosted)
+        if: ${{ matrix.self_hosted }}
+        run: python3 --version
+
       - name: Install dependencies
         working-directory: "PC APP"
-        run: pip install flask pyinstaller pillow
+        run: pip3 install flask pyinstaller pillow
 
       - name: Convert icon
         working-directory: "PC APP"
-        run: python assets/convert_icon.py
+        run: python3 assets/convert_icon.py
 
       - name: Build with PyInstaller
         working-directory: "PC APP"
-        run: pyinstaller minihead.spec --clean --noconfirm
+        run: python3 -m PyInstaller minihead.spec --clean --noconfirm
 
       - name: Zip artifact (macOS)
         if: runner.os == 'macOS'

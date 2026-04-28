@@ -15,11 +15,12 @@
 6. [Project Configuration (config.h)](#6-project-configuration-configh)
 7. [Flashing the ESP32-C3](#7-flashing-the-esp32-c3)
 8. [PC Leader App](#8-pc-leader-app)
-9. [Art-Net Test Tool](#9-art-net-test-tool)
-10. [Verify Boot — Serial Monitor](#10-verify-boot--serial-monitor)
-11. [Stored Files (LittleFS)](#11-stored-files-littlefs)
-12. [File Structure](#12-file-structure)
-13. [Differences to v3](#13-differences-to-v3)
+9. [UI Themes](#9-ui-themes)
+10. [Art-Net Test Tool](#10-art-net-test-tool)
+11. [Verify Boot — Serial Monitor](#11-verify-boot--serial-monitor)
+12. [Stored Files (LittleFS)](#12-stored-files-littlefs)
+13. [File Structure](#13-file-structure)
+14. [Differences to v3](#14-differences-to-v3)
 
 ---
 
@@ -30,6 +31,7 @@
 - **WiFi multi-network list** — tries last-connected network first, falls back down the list
 - **Built-in Art-Net / DMX512** — WiFiUDP polling, no external Art-Net library needed
 - **PC Leader App** (`pc_leader.py`) — Python/Flask; the PC acts as network leader, the ESP as follower
+- **Theme system** — drop a `.css` file in `PC APP/themes/` to switch UI designs; ESP theme lives in `theme.h`
 - **Art-Net status bar** — green bar in web UI when DMX is active; controls gray out automatically
 - **Multi-Head** — leader/follower election by lowest MAC; PC always wins with `00:00:00:00:00:PC`
 - **Cues + Sequencer** — saved to LittleFS; fire individually or run as timed sequence
@@ -278,7 +280,32 @@ Open **http://localhost:8080** in your browser.
 
 ---
 
-## 9. Art-Net Test Tool
+## 9. UI Themes
+
+The UI is split into a layout layer (`css/style.css`) that never changes, and a theme layer that controls all visual styles.
+
+### PC App
+
+The active theme is the **alphabetically first `.css` file** found in `PC APP/themes/`.
+
+| File | Design |
+|------|--------|
+| `custom.css` | Dark cyberpunk redesign — **default (active)** |
+| `minimal.css` | Clean light design |
+| `original.css` | Exact pre-v4.2 look (Share Tech Mono, scanline overlay) |
+| `session.css` | Simpler dark design built early in the v4.2 session |
+
+**To switch themes:** delete or rename the files you don't want so the desired one sorts first. No server restart needed — the theme is loaded fresh on each page load.
+
+**To create a custom theme:** add a new `.css` file to `PC APP/themes/`. It only needs to define `:root` variables and any visual overrides — the layout CSS handles all positioning.
+
+### ESP
+
+The ESP serves its theme from `plugins/wifi/theme.h` at `GET /theme`. Edit the PROGMEM CSS string in that file and reflash to change the ESP UI appearance.
+
+---
+
+## 10. Art-Net Test Tool
 
 `PC APP/artnet_test.py` is a standalone DMX sender + browser UI for testing.
 
@@ -329,7 +356,7 @@ Open **http://localhost:8765** for the browser control panel.
 
 ---
 
-## 10. Verify Boot — Serial Monitor
+## 11. Verify Boot — Serial Monitor
 
 ### Art-Net active (patch matched)
 
@@ -357,7 +384,7 @@ After **8 seconds** without a packet the ESP marks Art-Net inactive:
 
 ---
 
-## 11. Stored Files (LittleFS)
+## 12. Stored Files (LittleFS)
 
 | File               | Contents                                      |
 |--------------------|-----------------------------------------------|
@@ -371,7 +398,7 @@ Files survive firmware updates. To reset everything, use:
 
 ---
 
-## 12. File Structure
+## 13. File Structure
 
 ```
 main/
@@ -392,7 +419,8 @@ main/
     │   ├── discovery.h         # UDP beacon, leader election, peer table
     │   ├── discovery_globals.h # extern peer table, ownMAC, nodeRole
     │   ├── udp_control.h       # UDP CMD receiver (port 4211)
-    │   ├── html_page.h         # Embedded main UI HTML (PROGMEM)
+    │   ├── html_page.h         # Embedded main UI HTML — layout CSS only (PROGMEM)
+    │   ├── theme.h             # Visual theme CSS served at GET /theme (PROGMEM)
     │   ├── discovery_panel_html.h
     │   └── artnet_panel_html.h (via artnet/)
     └── artnet/
@@ -400,11 +428,28 @@ main/
         ├── artnet_globals.h    # Structs, channel offsets, ARTNET_PORT
         ├── artnet_receiver.h   # WiFiUDP polling, DMX apply + relay
         └── artnet_control.h    # HTTP routes for patch management
+
+PC APP/
+├── pc_leader.py                # Flask server + UDP leader
+├── index.html                  # Main UI (links external CSS/JS)
+├── css/
+│   └── style.css               # Layout/structural CSS only
+├── js/
+│   └── app.js                  # UI JavaScript
+├── themes/                     # Drop a .css file here to switch theme
+│   ├── custom.css              # Dark cyberpunk (default — active)
+│   ├── minimal.css             # Clean light design
+│   ├── original.css            # Pre-v4.2 original design
+│   └── session.css             # Simpler dark design from v4.2 session
+└── plugins/
+    ├── wifi/                   # Discovery panel
+    ├── artnet/                 # Art-Net patch panel
+    └── log/                    # Log config panel
 ```
 
 ---
 
-## 13. Differences to v3
+## 14. Differences to v3
 
 | Aspect             | v3                            | v4.2                                      |
 |--------------------|-------------------------------|-------------------------------------------|

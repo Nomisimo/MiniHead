@@ -11,14 +11,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nano Moving Light</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme">
 <style>
-  :root {
-    --bg:#0a0a0f;--surface:#13131a;--surface2:#1c1c26;
-    --border:#2a2a3a;--accent:#00e5ff;--accent2:#ff6b35;
-    --accent3:#a855f7;--text:#e0e0f0;--text-dim:#6b6b8a;
-    --success:#22c55e;--danger:#ef4444;
-    --mono:'Share Tech Mono',monospace;--sans:'Barlow',sans-serif;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;overflow-x:hidden;}
   body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:1000;}

@@ -11,6 +11,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "html_page.h"
+#include "theme.h"
 #include "core_globals.h"
 #include "log_config.h"
 #include "log_panel_html.h"
@@ -499,6 +500,13 @@ void setupRoutes() {
     r->addHeader("Access-Control-Allow-Origin",  "*");
     r->addHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
     r->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    req->send(r);
+  });
+
+  // ── Theme CSS ─────────────────────────────────────────────────
+  server.on("/theme", HTTP_GET, [](AsyncWebServerRequest* req) {
+    AsyncWebServerResponse* r = req->beginResponse_P(200, "text/css", THEME_CSS);
+    r->addHeader("Access-Control-Allow-Origin", "*");
     req->send(r);
   });
 

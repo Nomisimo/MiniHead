@@ -803,6 +803,29 @@ def serve_artnet_panel():
 def serve_log_panel():
     return send_from_directory("plugins/log", "log_panel.html")
 
+@app.route("/css/theme.css")
+def serve_theme():
+    themes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "themes")
+    try:
+        files = sorted(f for f in os.listdir(themes_dir) if f.endswith(".css"))
+    except FileNotFoundError:
+        files = []
+    if files:
+        return send_from_directory(themes_dir, files[0], mimetype="text/css")
+    return "", 204
+
+@app.route("/css/<path:filename>")
+def serve_css(filename):
+    return send_from_directory(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "css"), filename
+    )
+
+@app.route("/js/<path:filename>")
+def serve_js(filename):
+    return send_from_directory(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "js"), filename
+    )
+
 # ── /api/logconfig  (PC log flags) ───────────────────────────────
 @app.route("/api/logconfig", methods=["GET"])
 def api_get_logconfig():

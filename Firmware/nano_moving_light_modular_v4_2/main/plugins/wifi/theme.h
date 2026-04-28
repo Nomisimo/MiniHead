@@ -1,0 +1,14 @@
+#pragma once
+
+// ── Active theme CSS ─────────────────────────────────────────────
+// Served at GET /theme.  Replace or extend :root to create new themes.
+
+const char THEME_CSS[] PROGMEM = R"=====(
+:root {
+  --bg:#0a0a0f; --surface:#13131a; --surface2:#1c1c26;
+  --border:#2a2a3a; --accent:#00e5ff; --accent2:#ff6b35;
+  --accent3:#a855f7; --text:#e0e0f0; --text-dim:#6b6b8a;
+  --success:#22c55e; --danger:#ef4444;
+  --mono:'Share Tech Mono',monospace; --sans:'Barlow',sans-serif;
+}
+)=====";

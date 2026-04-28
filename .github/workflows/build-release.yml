@@ -34,7 +34,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: "PC APP"
-        run: pip install flask "flaskwebgui>=1.0.0" pyinstaller
+        run: pip install flask pyinstaller
 
       - name: Build with PyInstaller
         working-directory: "PC APP"

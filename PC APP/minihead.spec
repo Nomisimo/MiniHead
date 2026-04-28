@@ -4,28 +4,23 @@
 #         dist/MiniHead Control.app  (Mac only)
 
 import sys
-from PyInstaller.utils.hooks import collect_submodules, collect_all
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
-
-_fg_datas, _fg_binaries, _fg_hidden = collect_all("flaskwebgui")
 
 a = Analysis(
     ["app_main.py"],
     pathex=[],
-    binaries=[*_fg_binaries],
+    binaries=[],
     datas=[
         ("index.html",  "."),
         ("fonts",       "fonts"),
         ("plugins",     "plugins"),
         ("modules",     "modules"),
-        *_fg_datas,
     ],
     hiddenimports=[
         *collect_submodules("flask"),
         *collect_submodules("werkzeug"),
-        *_fg_hidden,
-        "flaskwebgui",
     ],
     hookspath=[],
     hooksconfig={},

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
 app_main.py — MiniHead Control desktop entry point.
-Opens the app in Chrome/Edge --app mode (no address bar, looks native).
-Zero third-party GUI dependencies — stdlib only.
+
+Mac:     pywebview (WKWebView) — native window, no browser needed
+Windows: Edge/Chrome --app mode — no address bar, looks native
+
 Run with:  python app_main.py
 Build with: pyinstaller minihead.spec --clean --noconfirm
 """
 
 import os
-import subprocess
 import socket
 import sys
 import threading
 import time
 import traceback
-import webbrowser
 from pathlib import Path
 
 URL = "http://127.0.0.1:8080"
@@ -32,7 +32,6 @@ def _log_dir() -> Path:
 
 
 def _setup_log_file():
-    """Redirect stdout + stderr to a log file so errors survive console=False."""
     log_path = _log_dir() / "app.log"
     log_file = open(log_path, "w", buffering=1, encoding="utf-8")
     sys.stdout = log_file
@@ -41,11 +40,18 @@ def _setup_log_file():
     return log_path
 
 
-def _find_browser():
-    """On Windows: find Edge/Chrome for --app mode. On Mac: use default browser."""
-    if sys.platform != "win32":
-        return None  # Mac/Linux: webbrowser.open() respects default browser (Safari etc.)
+def _wait_for_flask(retries=50, delay=0.1):
+    for _ in range(retries):
+        try:
+            socket.create_connection(("127.0.0.1", 8080), timeout=0.1).close()
+            return True
+        except OSError:
+            time.sleep(delay)
+    return False
 
+
+def _find_edge_or_chrome():
+    """Windows only: find Edge/Chrome for --app mode."""
     candidates = [
         os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
         os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
@@ -59,14 +65,29 @@ def _find_browser():
     return None
 
 
-def _wait_for_flask(retries=50, delay=0.1):
-    for _ in range(retries):
-        try:
-            socket.create_connection(("127.0.0.1", 8080), timeout=0.1).close()
-            return True
-        except OSError:
-            time.sleep(delay)
-    return False
+def _open_mac():
+    """Open a native WKWebView window via pywebview (no browser needed)."""
+    import webview
+    webview.create_window("MiniHead Control", URL, width=1280, height=900, resizable=True)
+    webview.start()
+
+
+def _open_windows():
+    """Open Edge/Chrome in --app mode. Falls back to default browser."""
+    import subprocess
+    import webbrowser
+    browser = _find_edge_or_chrome()
+    if browser:
+        print(f"[MiniHead] Opening {browser}")
+        subprocess.Popen([browser, f"--app={URL}", "--new-window"])
+    else:
+        webbrowser.open(URL)
+    # Keep server alive — Edge may return immediately if already running
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
 
 def main():
@@ -104,26 +125,15 @@ def main():
 
         print(f"[MiniHead] Flask running at {URL}")
 
-        browser = _find_browser()
-        if browser:
-            print(f"[MiniHead] Opening {browser}")
-            subprocess.Popen([browser, f"--app={URL}", "--new-window"])
+        if sys.platform == "darwin":
+            _open_mac()   # blocks until window is closed → clean exit
         else:
-            webbrowser.open(URL)
-
-        # Keep the server alive regardless of what the browser process does.
-        # (Edge may reuse an existing process and return immediately.)
-        print(f"[MiniHead] Server running — close this process to quit")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+            _open_windows()
 
     except Exception:
         traceback.print_exc()
         print(f"\n[MiniHead] Crashed — see log: {log_path}")
-        time.sleep(10)  # keep window open so user can read the error
+        time.sleep(10)
         sys.exit(1)
 
 

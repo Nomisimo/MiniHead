@@ -1,2 +1,3 @@
 flask>=3.0
 pyinstaller>=6.0
+pywebview>=5.0        # Mac only (WKWebView native window)

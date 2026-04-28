@@ -26,6 +26,9 @@ a = Analysis(
     hiddenimports=[
         *collect_submodules("flask"),
         *collect_submodules("werkzeug"),
+        # Mac: pywebview WKWebView backend (not needed on Windows)
+        "webview",
+        "webview.platforms.cocoa",
     ],
     hookspath=[],
     hooksconfig={},

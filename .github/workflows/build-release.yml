@@ -37,7 +37,13 @@ jobs:
         if: ${{ matrix.self_hosted }}
         run: python3 --version
 
-      - name: Install dependencies
+      - name: Install dependencies (Mac)
+        if: runner.os == 'macOS'
+        working-directory: "PC APP"
+        run: pip3 install flask pyinstaller pillow pywebview
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
         working-directory: "PC APP"
         run: pip3 install flask pyinstaller pillow
 

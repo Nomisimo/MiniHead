@@ -67,7 +67,7 @@ jobs:
       - name: Zip artifact (macOS)
         if: runner.os == 'macOS'
         working-directory: "PC APP/dist"
-        run: zip -r "../../${{ matrix.artifact_name }}" "MiniHead Control.app"
+        run: ditto -c -k --sequesterRsrc --keepParent "MiniHead Control.app" "../../${{ matrix.artifact_name }}"
 
       - name: Zip artifact (Windows)
         if: runner.os == 'Windows'

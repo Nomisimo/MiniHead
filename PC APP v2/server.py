@@ -443,8 +443,8 @@ def _artnet_apply_dmx():
         g   = dmx[addr+1]
         b   = dmx[addr+2]
         w   = dmx[addr+3]
-        pan = round(dmx[addr+4] / 255 * 180)
-        tilt= round(dmx[addr+5] / 255 * 180)
+        pan = round(dmx[addr+4] / 255 * 270)
+        tilt= round(dmx[addr+5] / 255 * 270)
         # master = dmx[addr+6]  # could dim all channels
         cmd = f"R:{r},G:{g},B:{b},W:{w},PAN:{pan},TILT:{tilt}"
         if first:

@@ -97,8 +97,8 @@ static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
     uint8_t g = (uint16_t)data[base + CH_GREEN]  * master / 255;
     uint8_t b = (uint16_t)data[base + CH_BLUE]   * master / 255;
     uint8_t w = (uint16_t)data[base + CH_WHITE]  * master / 255;
-    int pan   = map(data[base + CH_PAN],  0, 255, 0, 180);
-    int tilt  = map(data[base + CH_TILT], 0, 255, 0, 180);
+    int pan   = map(data[base + CH_PAN],  0, 255, 0, 270);
+    int tilt  = map(data[base + CH_TILT], 0, 255, 0, 270);
 
     if (master!=pM || r!=pR || g!=pG || b!=pB || w!=pW || pan!=pPan || tilt!=pTilt) {
       if (logCfg.artnetFrames)
@@ -130,8 +130,8 @@ static void artnet_relayToFollowers(uint16_t universe, uint16_t length, uint8_t*
     uint8_t g = (uint16_t)data[base + CH_GREEN]  * master / 255;
     uint8_t b = (uint16_t)data[base + CH_BLUE]   * master / 255;
     uint8_t w = (uint16_t)data[base + CH_WHITE]  * master / 255;
-    int pan   = map(data[base + CH_PAN],  0, 255, 0, 180);
-    int tilt  = map(data[base + CH_TILT], 0, 255, 0, 180);
+    int pan   = map(data[base + CH_PAN],  0, 255, 0, 270);
+    int tilt  = map(data[base + CH_TILT], 0, 255, 0, 270);
 
     char cmd[64];
     snprintf(cmd, sizeof(cmd), "R:%d,G:%d,B:%d,W:%d,PAN:%d,TILT:%d", r, g, b, w, pan, tilt);

@@ -36,8 +36,8 @@ void setLED(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
   curR=r; curG=g; curB=b; curW=w;
 }
 
-void setPan(int a)  { servoPan.write(constrain(a,0,180));  curPan  = constrain(a,0,180); }
-void setTilt(int a) { servoTilt.write(constrain(a,0,180)); curTilt = constrain(a,0,180); }
+void setPan(int a)  { a = constrain(a,0,270); servoPan.writeMicroseconds(map(a,0,270,500,2500));  curPan  = a; }
+void setTilt(int a) { a = constrain(a,0,270); servoTilt.writeMicroseconds(map(a,0,270,500,2500)); curTilt = a; }
 
 void hueToRGB(uint8_t hue, uint8_t &r, uint8_t &g, uint8_t &b) {
   uint8_t s=hue/43, o=(hue%43)*6;
@@ -80,8 +80,8 @@ void applyCommand(const String& cmd) {
       else if (key=="G")    { g    = constrain(val,0,255); hasColor = true; }
       else if (key=="B")    { b    = constrain(val,0,255); hasColor = true; }
       else if (key=="W")    { w    = constrain(val,0,255); hasColor = true; }
-      else if (key=="PAN")  pan  = constrain(val,0,180);
-      else if (key=="TILT") tilt = constrain(val,0,180);
+      else if (key=="PAN")  pan  = constrain(val,0,270);
+      else if (key=="TILT") tilt = constrain(val,0,270);
     }
     pos = comma+1;
   }
@@ -104,9 +104,9 @@ void core_setup() {
   strip.begin(); strip.setBrightness(255); setLED(0,0,0,0);
 
   ESP32PWM::allocateTimer(0); ESP32PWM::allocateTimer(1);
-  servoPan.setPeriodHertz(50);  servoPan.attach(SERVO_PAN_PIN, 500, 2400);
-  servoTilt.setPeriodHertz(50); servoTilt.attach(SERVO_TIL_PIN, 500, 2400);
-  setPan(90); setTilt(90);
+  servoPan.setPeriodHertz(50);  servoPan.attach(SERVO_PAN_PIN, 500, 2500);
+  servoTilt.setPeriodHertz(50); servoTilt.attach(SERVO_TIL_PIN, 500, 2500);
+  setPan(135); setTilt(135);
 
   Serial.println("[Core] LED + Servos ready");
 }

@@ -26,8 +26,8 @@ struct ArtnetPatch {
 #define CH_GREEN   2
 #define CH_BLUE    3
 #define CH_WHITE   4
-#define CH_PAN     5   // 0-255 → 0-180°
-#define CH_TILT    6   // 0-255 → 0-180°
+#define CH_PAN     5   // 0-255 → 0-270°
+#define CH_TILT    6   // 0-255 → 0-270°
 
 // ── Global state — defined in artnet_receiver.h ───────────────────
 extern ArtnetPatch   artnetPatches[MAX_PATCHES];

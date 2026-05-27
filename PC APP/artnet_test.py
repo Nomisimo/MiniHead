@@ -42,6 +42,19 @@ ARTNET_PORT = 6454
 SEND_RATE   = 40      # packets/s
 UI_PORT     = 8765
 
+# ── Broadcast warning ──────────────────────────────────────────────
+# Fritz!Box (and most home routers) do NOT forward UDP broadcasts from
+# Ethernet → WiFi.  If the PC is on Ethernet and the ESP is on WiFi,
+# broadcast packets will never reach the ESP.
+# Always pass the ESP's IP directly:
+#   python3 artnet_test.py 192.168.x.x  <universe>  <startAddr>
+if TARGET_IP in ("255.255.255.255", "<broadcast>"):
+    print("⚠️  WARNING: target is broadcast (255.255.255.255)")
+    print("   Home routers (Fritz!Box etc.) block UDP broadcasts Ethernet→WiFi.")
+    print("   ArtNet will NOT reach WiFi ESPs — pass the ESP IP directly:")
+    print("   python3 artnet_test.py <ESP_IP> <universe> <startAddr>")
+    print()
+
 # ── Interface detection ────────────────────────────────────────────
 def get_local_ip_for(target_ip: str) -> str:
     """Return the local IP address the OS would use to reach target_ip.
@@ -497,6 +510,9 @@ function applyTarget(){
   var ip=document.getElementById('cfgIp').value.trim();
   var uni=+document.getElementById('cfgUni').value;
   var addr=+document.getElementById('cfgAddr').value;
+  if(ip==='255.255.255.255'||ip===''){
+    toast('⚠ Broadcast blocked by router — enter ESP IP!','warn');
+  }
   fetch('/api/target',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ip:ip,universe:uni,startAddr:addr})
   }).then(function(r){return r.json();}).then(function(d){

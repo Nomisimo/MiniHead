@@ -47,17 +47,19 @@ artnet_dmx    = {}          # universe(int) → bytearray[512]
 artnet_active = False
 artnet_last   = {}          # "r","g","b","w","pan","tilt","patchCount"
 
+patch_acks_lock = threading.Lock()
+patch_acks      = {}        # fixID(int) → {"status":"pending"|"ok"|"timeout", "ts":float}
+
 mac_names_lock = threading.Lock()
 mac_names      = {}         # mac → friendly name
 
 flags_lock = threading.Lock()
-log_flags  = {
-    "wifi":    True,
-    "udp":     True,
-    "artnet":  True,
-    "motion":  True,
-    "serial":  True,
-    "system":  True,
+log_flags  = {                  # keys match ESP firmware log_config.h
+    "artnetFrames":     False,  # per-frame R/G/B values (spammy)
+    "artnetEvents":     True,   # ArtNet active / timeout / patch changed
+    "discoveryBeacons": False,  # every beacon heard (spammy)
+    "discoveryEvents":  True,   # role change, leader found/lost
+    "udpVerbose":       True,   # UDP commands received / identify events
 }
 
 rainbow_lock   = threading.Lock()
@@ -152,7 +154,7 @@ def _broadcast_addr(ip):
 
 def _build_beacon():
     ip = _own_ip()
-    return f"MINIHEAD|{OWN_MAC}|{ip}|0|LEADER|PC".encode()
+    return f"MINIHEAD|{OWN_MAC}|{ip}|0|LEADER|PC|PC".encode()
 
 def _update_peer(mac, ip, fix_id, role, name, mode=""):
     with peers_lock:
@@ -203,6 +205,13 @@ def _send_udp_raw(ip, msg):
     except Exception as e:
         print(f"[udp] raw send error to {ip}: {e}")
 
+def _unicast_all(cmd):
+    """Unicast cmd to every known peer — avoids Fritz!Box broadcast blocking (WiFi↔Ethernet)."""
+    with peers_lock:
+        targets = [(p["ip"], p["mac"]) for p in peers.values() if p.get("mac") != OWN_MAC]
+    for ip, mac in targets:
+        _send_udp_cmd(ip, cmd, mac)
+
 def _broadcast_cmd(cmd):
     try:
         ip = _own_ip()
@@ -217,10 +226,17 @@ def _broadcast_cmd(cmd):
 
 def _push_patch_to_esp(fid, uni, addr):
     """Push a patch record to every online ESP whose fixID matches fid.
-    The ESP stores it in /artnet.json so its native ArtNet receiver can apply it."""
+    The ESP stores it in /artnet.json so its native ArtNet receiver can apply it.
+    Updates patch_acks so GET /api/artnet/patch/ack reflects the result."""
     with peers_lock:
         targets = [(p["ip"], p["mac"]) for p in peers.values()
                    if p.get("fixID") == fid and p.get("mac") != OWN_MAC]
+    if not targets:
+        return
+    # Mark pending before attempting
+    with patch_acks_lock:
+        patch_acks[fid] = {"status": "pending", "ts": time.time()}
+    success = False
     for ip, mac in targets:
         try:
             body = json.dumps({"fixID": fid, "universe": uni, "startAddr": addr}).encode()
@@ -230,8 +246,11 @@ def _push_patch_to_esp(fid, uni, addr):
                 headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req, timeout=3)
             print(f"[patch] pushed Fix#{fid} U{uni} A{addr} → {mac} ({ip})")
+            success = True
         except Exception as e:
             print(f"[patch] push failed → {ip}: {e}")
+    with patch_acks_lock:
+        patch_acks[fid] = {"status": "ok" if success else "timeout", "ts": time.time()}
 
 def _delete_patch_from_esp(fid):
     """Tell the ESP to remove the patch for fid from its /artnet.json."""
@@ -249,7 +268,7 @@ def _delete_patch_from_esp(fid):
             print(f"[patch] delete failed → {ip}: {e}")
 
 def _send_command(cmd, targets=None):
-    """Send command to a list of MACs, or broadcast if targets is empty/None."""
+    """Send command to a list of MACs, or unicast to all peers if targets is empty/None."""
     if targets:
         with peers_lock:
             peers_copy = dict(peers)
@@ -259,13 +278,13 @@ def _send_command(cmd, targets=None):
             if mac in peers_copy:
                 _send_udp_cmd(peers_copy[mac]["ip"], cmd, mac)
     else:
-        _broadcast_cmd(cmd)
+        _unicast_all(cmd)
 
 def _fire_cue(cue):
     cmd = f"R:{cue['r']},G:{cue['g']},B:{cue['b']},W:{cue['w']},PAN:{cue['pan']},TILT:{cue['tilt']}"
     ft = cue.get("fixTargets", [0])
     if not ft or ft == [0]:
-        _broadcast_cmd(cmd)
+        _unicast_all(cmd)
     else:
         with fixtures_lock:
             fix_copy = dict(fixtures)
@@ -281,7 +300,7 @@ def _fire_cue(cue):
                 if mac in peers_copy:
                     _send_udp_cmd(peers_copy[mac]["ip"], cmd, mac)
         else:
-            _broadcast_cmd(cmd)
+            _unicast_all(cmd)
 
 # ── Background Threads ─────────────────────────────────────────────────────
 def beacon_sender():
@@ -660,7 +679,7 @@ def api_rainbow():
     with rainbow_lock:
         rainbow_active = on
     cmd = "RAINBOW:1" if on else "RAINBOW:0"
-    _broadcast_cmd(cmd)
+    _unicast_all(cmd)
     return jsonify({"status": "ok", "on": on})
 
 # ── Cues ──────────────────────────────────────────────────────────────────────
@@ -782,6 +801,15 @@ def api_artnet_patch_list():
     with patches_lock:
         return jsonify(list(patches))
 
+@app.route("/api/artnet/patch/ack")
+def api_artnet_patch_ack():
+    """Per-fixID push acknowledgement state.
+    Used by the ESP's discovery panel JS to show ✓/⟳/✗ icons next to patches.
+    Returns: {"<fixID>": {"status": "ok"|"pending"|"timeout", "ts": <float>}, ...}
+    """
+    with patch_acks_lock:
+        return jsonify({str(k): v for k, v in patch_acks.items()})
+
 @app.route("/api/artnet/patch", methods=["POST"])
 def api_artnet_patch_create():
     data  = request.get_json(force=True)
@@ -828,16 +856,23 @@ def api_artnet_patch_clear():
 def api_artnet_patch_bulk():
     data  = request.get_json(force=True)
     items = data.get("patches", [])
+    new_patches = []
+    for item in items:
+        fid  = int(item.get("fixID",     0))
+        uni  = int(item.get("universe",  0))
+        addr = int(item.get("startAddr", 1))
+        if fid > 0:
+            new_patches.append({"fixID": fid, "universe": uni, "startAddr": addr})
     with patches_lock:
         patches.clear()
-        for item in items:
-            patches.append({
-                "fixID":     int(item.get("fixID", 0)),
-                "universe":  int(item.get("universe", 0)),
-                "startAddr": int(item.get("startAddr", 1)),
-            })
+        patches.extend(new_patches)
     _save_data()
-    return jsonify({"status": "ok", "count": len(patches)})
+    # Push each patch to its ESP individually (same protocol as single-patch create)
+    for p in new_patches:
+        threading.Thread(target=_push_patch_to_esp,
+                         args=(p["fixID"], p["universe"], p["startAddr"]),
+                         daemon=True).start()
+    return jsonify({"status": "ok", "count": len(new_patches)})
 
 # ── Log Config ────────────────────────────────────────────────────────────────
 @app.route("/api/logconfig", methods=["GET", "POST"])

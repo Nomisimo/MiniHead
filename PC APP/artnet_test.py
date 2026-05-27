@@ -549,8 +549,8 @@ function updatePreview(){
 }
 
 function updatePanTiltLabel(){
-  var pan =Math.round(+document.getElementById('vPan').value /255*180);
-  var tilt=Math.round(+document.getElementById('vTilt').value/255*180);
+  var pan =Math.round(+document.getElementById('vPan').value /255*270);
+  var tilt=Math.round(+document.getElementById('vTilt').value/255*270);
   document.getElementById('panTiltDeg').textContent='Pan: '+pan+'°  Tilt: '+tilt+'°';
 }
 
@@ -790,8 +790,8 @@ def render():
         f"  {GREEN}Ch{b+3:3d}{RESET}  GREEN   {g:3d}  {bar(g, 22, GREEN)}  →{g_o}",
         f"  {CYAN}Ch{b+4:3d}{RESET}  BLUE    {bv:3d}  {bar(bv, 22, CYAN)}  →{b_o}",
         f"  {WHITE}Ch{b+5:3d}{RESET}  WHITE   {w:3d}  {bar(w, 22, WHITE)}  →{w_o}",
-        f"  {MAGENTA}Ch{b+6:3d}{RESET}  PAN     {pan:3d}  {bar(pan, 22, MAGENTA)}  {pan/255*180:.0f}°",
-        f"  {MAGENTA}Ch{b+7:3d}{RESET}  TILT    {tilt:3d}  {bar(tilt, 22, MAGENTA)}  {tilt/255*180:.0f}°",
+        f"  {MAGENTA}Ch{b+6:3d}{RESET}  PAN     {pan:3d}  {bar(pan, 22, MAGENTA)}  {pan/255*270:.0f}°",
+        f"  {MAGENTA}Ch{b+7:3d}{RESET}  TILT    {tilt:3d}  {bar(tilt, 22, MAGENTA)}  {tilt/255*270:.0f}°",
         f"",
         f"  {GRAY}[q]quit [SPACE]demo [0]blackout [f]full [h]highlight [n]rainbow [s]snap{RESET}",
     ]

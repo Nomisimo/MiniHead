@@ -1,3 +1,12 @@
+#pragma once
+
+// ── Discovery Panel HTML Fragment ────────────────────────────────
+// Served at GET /plugins/wifi/discovery_panel.html
+// Injected into the Future Module Slot by the main page JS.
+// Matches PC App discovery_panel.html exactly.
+// ─────────────────────────────────────────────────────────────────
+
+const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
 <style>
   .heads-toolbar{display:flex;gap:8px;margin-bottom:6px;align-items:center;flex-wrap:wrap;}
   .heads-toolbar.filter-row{margin-bottom:10px;}
@@ -17,7 +26,7 @@
   .mode-badge{margin-left:3px;padding:1px 4px;border-radius:2px;font-size:9px;letter-spacing:1px;}
   .mode-badge.udp{background:rgba(168,85,247,0.15);color:var(--accent3);}
   .mode-badge.artnet{background:rgba(255,107,53,0.15);color:var(--accent2);}
-  .mode-badge.pc{background:rgba(0,229,255,0.1);color:var(--accent);}
+  .artnet-cell{opacity:0.4;pointer-events:none;}
   .identify-btn{padding:3px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:10px;border-radius:3px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;letter-spacing:1px;}
   .identify-btn.holding{border-color:#ffffff;color:#ffffff;background:rgba(255,255,255,0.12);}
   .dup-warn{color:var(--danger);font-size:9px;margin-left:2px;}
@@ -44,7 +53,15 @@
   .patch-next strong{color:var(--accent2);font-size:13px;}
   .patch-btn-row{margin-left:auto;display:flex;gap:6px;}
 
-  /* ── Patch action button per row ── */
+  /* ── Hide Art-Net columns when artnet plugin is inactive ── */
+  #nh_tableWrap.no-artnet .heads-table th:nth-child(7),
+  #nh_tableWrap.no-artnet .heads-table th:nth-child(8),
+  #nh_tableWrap.no-artnet .heads-table th:nth-child(9),
+  #nh_tableWrap.no-artnet .heads-table td:nth-child(7),
+  #nh_tableWrap.no-artnet .heads-table td:nth-child(8),
+  #nh_tableWrap.no-artnet .heads-table td:nth-child(9){display:none;}
+
+  /* ── Per-row patch assign button ── */
   .patch-assign-btn{
     display:none;padding:2px 10px;border:1px solid var(--accent2);
     background:rgba(255,107,53,0.1);color:var(--accent2);
@@ -63,14 +80,13 @@
 </style>
 
 <div class="panel-title-network">// Network Heads</div>
-<div id="nh_debug_bar" style="font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:8px;background:#ffff00;color:#000;border:1px solid #888;">Waiting for data...</div>
 
 <div class="heads-toolbar">
   <button class="net-btn" onclick="nh_selectAll()">SELECT ALL</button>
   <button class="net-btn" onclick="nh_clearSel()">UNSELECT ALL</button>
   <span class="heads-sel-info" id="nh_selInfo">No heads selected</span>
   <button class="net-btn primary"                     onclick="nh_sendLive()">SEND LIVE</button>
-  <button class="net-btn purple"                      onclick="nh_addToCue()">ADD TO CUE ▾</button>
+  <button class="net-btn purple"                      onclick="nh_addToCue()">ADD TO CUE &#9660;</button>
   <button class="net-btn orange" id="nh_patchToggle"  onclick="nh_togglePatchMode()">PATCH</button>
 </div>
 <div class="heads-toolbar filter-row">
@@ -85,7 +101,7 @@
   <span class="patch-next">Start&nbsp;Fix#</span>
   <input type="number" id="nh_patchStart" class="patch-start" value="1" min="1" max="999"
     oninput="nh_onStartChange()">
-  <span class="patch-next">→&nbsp;Next:&nbsp;<strong id="nh_patchNextLabel">1</strong></span>
+  <span class="patch-next">&rarr;&nbsp;Next:&nbsp;<strong id="nh_patchNextLabel">1</strong></span>
   <span class="patch-next" id="nh_patchSelCount" style="color:var(--text-dim);"></span>
   <div class="patch-btn-row">
     <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_resetPatchCounter()">RESET</button>
@@ -120,8 +136,6 @@
 
 <script>
 (function(){
-  console.log('[nh] IIFE executing at', Date.now(), '— nh_tbody exists:', !!document.getElementById('nh_tbody'));
-
   // ── State ────────────────────────────────────────────────────
   var headsData             = [];
   var fixturePool           = [];
@@ -131,8 +145,9 @@
   var patchMode             = false;
   var patchNextID           = 1;
   var anPatches             = [];
-  var patchAcks             = {};  // fixID  → {status, ts}
-  var nameAcks              = {};  // mac    → {status, ts}
+  var patchAcks             = {};  // fixID  \u2192 {status, ts}
+  var nameAcks              = {};  // mac    \u2192 {status, ts}
+  var artnetAvailable       = false;
 
   // ── Boot ─────────────────────────────────────────────────────
   nh_load();
@@ -140,26 +155,32 @@
 
   // ── Load heads + fixture pool ────────────────────────────────
   function nh_load() {
-    console.log('[nh] nh_load firing at', new Date().toLocaleTimeString());
     Promise.all([
-      fetch('/api/heads').then(function(r){return r.json();}).catch(function(e){console.warn('[nh] /api/heads failed:',e);return[];}),
+      fetch('/api/heads').then(function(r){return r.json();}),
       fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
-      fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
+      fetch('/api/artnet/patch').then(function(r){artnetAvailable=r.ok;return r.ok?r.json():[];}).catch(function(){artnetAvailable=false;return[];}),
+      fetch('/api/artnet/patch/ack').then(function(r){return r.ok?r.json():{};}).catch(function(){return{};}),
+      fetch('/api/heads/ack').then(function(r){return r.json();}).catch(function(){return{};})
     ]).then(function(res){
-      headsData   = Array.isArray(res[0]) ? res[0] : [];
-      fixturePool = Array.isArray(res[1]) ? res[1] : [];
-      anPatches   = Array.isArray(res[2]) ? res[2] : [];
-      console.log('[nh] load ok — heads:', headsData.length, 'fixtures:', fixturePool.length);
-      // Clear stale ok acks (>20 s old)
+      headsData   = res[0];
+      fixturePool = res[1];
+      anPatches   = res[2];
+      var sPA = res[3]||{}, sNA = res[4]||{};
+      Object.keys(sPA).forEach(function(k){
+        var s=sPA[k]; if(s.status==='ok'||s.status==='timeout') patchAcks[parseInt(k)]=s;
+      });
+      Object.keys(sNA).forEach(function(k){
+        var s=sNA[k]; if(s.status==='ok'||s.status==='timeout') nameAcks[k.toUpperCase()]=s;
+      });
       var now=Date.now()/1000;
       Object.keys(patchAcks).forEach(function(k){
-        var a=patchAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>20) delete patchAcks[k];
+        var a=patchAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete patchAcks[k];
       });
       Object.keys(nameAcks).forEach(function(k){
-        var a=nameAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>20) delete nameAcks[k];
+        var a=nameAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete nameAcks[k];
       });
       nh_render();
-    }).catch(function(e){ console.error('[nh_load] Promise.all failed:', e); });
+    }).catch(function(){});
   }
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -174,14 +195,14 @@
       bar.classList.add('visible');
       btn.classList.add('active');
       wrap.classList.add('patch-mode-active');
-      // Set start to first unused ID by default
+      // Auto-find first unused Fix ID
       var used = headsData.map(function(h){return h.fixID;}).filter(function(id){return id>0;});
       var start = 1;
       while(used.indexOf(start)>=0) start++;
       document.getElementById('nh_patchStart').value = start;
       patchNextID = start;
       nh_updatePatchLabel();
-      if(typeof toast==='function') toast('Patch mode — click a head to assign Fix#');
+      if(typeof toast==='function') toast('Patch mode \u2014 click a head to assign Fix#');
     } else {
       bar.classList.remove('visible');
       btn.classList.remove('active');
@@ -205,7 +226,6 @@
 
   // ── Patch DONE — assign IDs to all selected heads in display order ──
   window.nh_patchDone = function() {
-    // Collect selected heads in the same sort order used by nh_render
     var sorted = headsData.slice().sort(function(a,b){
       if(a.role==='LEADER'&&b.role!=='LEADER') return -1;
       if(b.role==='LEADER'&&a.role!=='LEADER') return  1;
@@ -214,24 +234,18 @@
       return a.mac.localeCompare(b.mac);
     }).filter(function(h){ return selectedMACs.indexOf(h.mac)>=0; });
 
-    if(!sorted.length){
-      // No selection — just close
-      nh_togglePatchMode();
-      return;
-    }
+    if(!sorted.length){ nh_togglePatchMode(); return; }
 
     var startId = patchNextID;
     var pending = sorted.length;
     sorted.forEach(function(h, i){
       var id   = startId + i;
       var name = h.name || ('Fix #'+id);
-      // Send Fix ID to device
       fetch('/api/heads/'+h.mac+'/fixid',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({fixID:id})
       }).then(function(){
         h.fixID = id;
-        // Upsert fixture entry with MAC linked
         fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({id:id,name:name,mac:h.mac})
         }).catch(function(){
@@ -244,9 +258,33 @@
           nh_updatePatchLabel();
           nh_togglePatchMode();
           nh_load();
-          if(typeof toast==='function') toast('Patched '+sorted.length+' head(s): Fix#'+startId+'–Fix#'+(startId+sorted.length-1));
+          if(typeof toast==='function') toast('Patched '+sorted.length+' head(s): Fix#'+startId+'\u2013Fix#'+(startId+sorted.length-1));
         }
       });
+    });
+  };
+
+  // ── Assign next Fix ID to a single head ──────────────────────
+  window.nh_patchAssign = function(mac) {
+    var id = patchNextID;
+    fetch('/api/heads/'+mac+'/fixid',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fixID:id})
+    }).then(function(){
+      headsData.forEach(function(h){if(h.mac===mac)h.fixID=id;});
+      var name = (headsData.find(function(h){return h.mac===mac;})||{}).name || ('Fix #'+id);
+      fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:id,name:name,mac:mac})
+      }).catch(function(){
+        fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({mac:mac})});
+      });
+      patchNextID++;
+      nh_updatePatchLabel();
+      nh_render();
+      var row = document.querySelector('tr[data-mac="'+mac+'"]');
+      if(row){ row.classList.add('patch-patched-flash'); setTimeout(function(){row.classList.remove('patch-patched-flash');},500); }
+      if(typeof toast==='function') toast('Fix#'+id+' \u2192 \u2026'+mac.slice(-8)+' \u2014 next: Fix#'+patchNextID);
     });
   };
 
@@ -256,45 +294,17 @@
     var selEl = document.getElementById('nh_patchSelCount');
     if(selEl){
       var n = selectedMACs.length;
-      selEl.textContent = n ? '('+n+' selected → Fix#'+patchNextID+'–Fix#'+(patchNextID+n-1)+')' : '';
+      selEl.textContent = n ? '('+n+' selected \u2192 Fix#'+patchNextID+'\u2013Fix#'+(patchNextID+n-1)+')' : '';
     }
   }
-
-  // ── Assign next Fix ID to a head ─────────────────────────────
-  window.nh_patchAssign = function(mac) {
-    var id = patchNextID;
-    // Send to device
-    fetch('/api/heads/'+mac+'/fixid',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fixID:id})
-    }).then(function(){
-      headsData.forEach(function(h){if(h.mac===mac)h.fixID=id;});
-      // Upsert into fixture pool
-      var name = (headsData.find(function(h){return h.mac===mac;})||{}).name || ('Fix #'+id);
-      fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id:id,name:name,mac:mac})
-      }).catch(function(){
-        // If already exists, update MAC
-        fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({mac:mac})});
-      });
-      patchNextID++;
-      nh_updatePatchLabel();
-      nh_render();
-      // Flash the row
-      var row = document.querySelector('tr[data-mac="'+mac+'"]');
-      if(row){ row.classList.add('patch-patched-flash'); setTimeout(function(){row.classList.remove('patch-patched-flash');},500); }
-      if(typeof toast==='function') toast('Fix#'+id+' → '+mac.slice(-8)+' — next: Fix#'+patchNextID);
-    });
-  };
 
   // ── Render ───────────────────────────────────────────────────
   function nh_render() {
     var tbody = document.getElementById('nh_tbody');
-    if (!tbody) { console.error('[nh] nh_tbody not found in DOM'); return; }
-    console.log('[nh] render — heads:', headsData.length, 'active:', document.activeElement && document.activeElement.tagName);
-    var dbg = document.getElementById('nh_debug_bar');
-    if(dbg) dbg.textContent = 'render @ '+new Date().toLocaleTimeString()+' — heads:'+headsData.length+' fixtures:'+fixturePool.length;
+    if(!patchMode){
+      var active = document.activeElement;
+      if (active && tbody && tbody.contains(active)) return;
+    }
     tbody.innerHTML = '';
 
     if (!headsData || !headsData.length) {
@@ -315,7 +325,6 @@
         var sel = selectedMACs.indexOf(h.mac)>=0;
         var dup = h.fixID>0 && fixCount[h.fixID]>1;
         var isArtnet = (h.mode === 'ARTNET');
-        var modeClass = isArtnet ? 'artnet' : (h.mode === 'PC' ? 'pc' : 'udp');
         var tr  = document.createElement('tr');
         tr.dataset.mac = h.mac;
         if(sel) tr.className='selected-head';
@@ -327,7 +336,7 @@
         var nameIcon   = nh_ackIcon(nameAckSt);
         var patchCells;
         if(!isArtnet){
-          // UDP node: Fix IDs only, no DMX — gray out patch columns
+          // UDP node: uses Fix IDs only, no DMX — gray out patch columns
           patchCells=
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;opacity:0.4;">—</td>'+
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;opacity:0.4;">—</td>'+
@@ -343,14 +352,14 @@
           patchCells=
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
-            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
+            '<td>'+(artnetAvailable?'<button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button>':'')+'</td>';
         } else {
           patchCells=
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
             '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
             '<td></td>';
         }
-        var modeBadge='<span class="mode-badge '+modeClass+'">'+h.mode+'</span>';
+        var modeBadge='<span class="mode-badge '+(isArtnet?'artnet':'udp')+'">'+(h.mode||'UDP')+'</span>';
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+
               ' onchange="nh_toggleSel(\''+h.mac+'\',this.checked)"></td>'+
@@ -361,7 +370,7 @@
           '</td>'+
           '<td style="white-space:nowrap;"><input class="name-input" type="text" value="'+esc(h.name||'')+'"'+
               ' placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)">'+nameIcon+'</td>'+
-          '<td style="color:var(--text-dim);" title="'+h.mac+'">&#8230;'+h.mac.slice(-8)+'</td>'+
+          '<td style="color:var(--text-dim);" title="'+h.mac+'">\u2026'+h.mac.slice(-8)+'</td>'+
           '<td style="color:var(--accent);">'+h.ip+'</td>'+
           '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span>'+modeBadge+'</td>'+
           patchCells+
@@ -371,7 +380,7 @@
             ' onmouseleave="nh_identStop(\''+h.mac+'\')"'+
             ' ontouchstart="nh_identStart(\''+h.mac+'\')"'+
             ' ontouchend="nh_identStop(\''+h.mac+'\')">HOLD</button></td>'+
-          '<td><button class="patch-assign-btn" onclick="nh_patchAssign(\''+h.mac+'\')">&#8594; Fix#'+patchNextID+'</button></td>';
+          '<td><button class="patch-assign-btn" onclick="nh_patchAssign(\''+h.mac+'\')">\u2192 Fix#'+patchNextID+'</button></td>';
         tbody.appendChild(tr);
       });
     }
@@ -386,7 +395,7 @@
     });
     if(offline.length>0){
       var sep=document.createElement('tr');
-      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">── OFFLINE ──</td>';
+      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">\u2500\u2500 OFFLINE \u2500\u2500</td>';
       tbody.appendChild(sep);
       offline.forEach(function(f){
         var sel=selectedOfflineFixIDs.indexOf(f.id)>=0;
@@ -405,20 +414,20 @@
             '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
         } else if(f.id>0){
           offPatchCells=
-            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
-            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
-            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">\u2014</td>'+
+            '<td>'+(artnetAvailable?'<button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button>':'')+'</td>';
         } else {
-          offPatchCells='<td>—</td><td>—</td><td></td>';
+          offPatchCells='<td>\u2014</td><td>\u2014</td><td></td>';
         }
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+
               ' onchange="nh_toggleOffline('+f.id+',this.checked)"></td>'+
-          '<td><span style="color:var(--accent2);font-family:var(--mono);font-size:11px;">'+(f.id>0?f.id:'—')+'</span></td>'+
+          '<td><span style="color:var(--accent2);font-family:var(--mono);font-size:11px;">'+(f.id>0?f.id:'\u2014')+'</span></td>'+
           '<td><input class="name-input" type="text" value="'+esc(f.name||'')+'"'+
               ' placeholder="Name..." onchange="nh_renameFixture('+f.id+',this.value)"></td>'+
-          '<td style="color:var(--text-dim);">'+(f.mac?('&#8230;'+f.mac.slice(-8)):'—')+'</td>'+
-          '<td>—</td>'+
+          '<td style="color:var(--text-dim);">'+(f.mac?('\u2026'+f.mac.slice(-8)):'\u2014')+'</td>'+
+          '<td>\u2014</td>'+
           '<td><span class="role-badge" style="background:rgba(107,107,138,0.15);color:var(--text-dim)">OFFLINE</span></td>'+
           offPatchCells+
           '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" title="Remove" style="color:var(--danger);border-color:var(--danger);">&#10005;</button></td>'+
@@ -442,15 +451,26 @@
       '<td></td>';
     tbody.appendChild(addRow);
 
-    // Patch mode: update all assign-btn labels to current patchNextID
+    // Update all assign-btn labels in patch mode
     if(patchMode){
       tbody.querySelectorAll('.patch-assign-btn').forEach(function(btn){
-        btn.textContent = '→ Fix#'+patchNextID;
+        btn.textContent = '\u2192 Fix#'+patchNextID;
       });
     }
 
     nh_updateSelInfo();
     nh_updatePatchLabel();
+    nh_updateArtnetUI();
+  }
+
+  function nh_updateArtnetUI() {
+    var patchBtn  = document.getElementById('nh_patchToggle');
+    var noDmxBtn  = document.querySelector('.net-btn[onclick="nh_selectNoDmx()"]');
+    var wrap      = document.getElementById('nh_tableWrap');
+    var d = artnetAvailable ? '' : 'none';
+    if(patchBtn) patchBtn.style.display = d;
+    if(noDmxBtn) noDmxBtn.style.display = d;
+    if(wrap) wrap.classList.toggle('no-artnet', !artnetAvailable);
   }
 
   // ── Selection ─────────────────────────────────────────────────
@@ -491,7 +511,6 @@
     fetch('/api/artnet/patch').then(function(r){return r.json();}).then(function(patches){
       var patchedIDs = patches.map(function(p){return p.fixID;});
       selectedMACs = headsData.filter(function(h){
-        // Include heads with no fixID, OR with a fixID not in Art-Net patches
         return !(h.fixID>0) || patchedIDs.indexOf(h.fixID)<0;
       }).map(function(h){ return h.mac; });
       selectedOfflineFixIDs = [];
@@ -525,7 +544,7 @@
     var el=document.getElementById('nh_selInfo');
     var labels=selectedMACs.map(function(mac){
       var h=headsData.find(function(x){return x.mac===mac;});
-      return (h&&h.fixID>0)?'Fix#'+h.fixID:'…'+mac.slice(-5);
+      return (h&&h.fixID>0)?'Fix#'+h.fixID:'\u2026'+mac.slice(-5);
     });
     selectedOfflineFixIDs.forEach(function(id){labels.push('Fix#'+id+'(off)');});
     el.textContent=labels.length?labels.join(', '):'No heads selected';
@@ -667,7 +686,7 @@
     var age = Date.now()/1000 - (ack.ts||0);
     if(ack.status==='pending')
       return '<span style="color:var(--accent2);font-size:12px;margin-left:3px;" title="Waiting for ESP\u2026">&#8635;</span>';
-    if(ack.status==='ok'&&age<20)
+    if(ack.status==='ok'&&age<5)
       return '<span style="color:#4ade80;font-size:12px;margin-left:3px;" title="ESP confirmed">&#10003;</span>';
     if(ack.status==='timeout')
       return '<span style="color:var(--danger);font-size:12px;margin-left:3px;" title="No response from ESP">&#10007;</span>';
@@ -679,19 +698,14 @@
     var p = anPatches.find(function(x){return x.fixID===fixID;});
     if(!p) return;
     var isOnline = headsData.some(function(h){return h.fixID===fixID;});
+    if(isOnline){ patchAcks[fixID]={status:'pending',ts:Date.now()/1000}; nh_render(); }
     var data = {universe:uni!==null?uni:p.universe, startAddr:addr!==null?addr:p.startAddr};
     fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(data)
-    }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-    .then(function(res){
-      if(res.ok){
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
         p.universe=data.universe; p.startAddr=data.startAddr;
-        // Only mark pending after confirmed server acceptance
-        if(isOnline){ patchAcks[fixID]={status:'pending',ts:Date.now()/1000}; nh_render(); }
         if(typeof toast==='function') toast(isOnline?'Patch sent \u2014 waiting for ESP\u2026':'Patch saved (ESP offline \u2014 will sync on reconnect)');
-      } else {
-        if(typeof toast==='function') toast((res.d&&res.d.message)||'Patch conflict','err');
-        nh_load();  // revert inputs to server state
       }
     });
   };
@@ -704,43 +718,25 @@
     });
   };
   window.nh_patchCreate = function(fixID) {
-    // Find first non-overlapping address in universe 0 (7 channels per fixture)
-    var DMX_FP = 7;
     var used = anPatches.filter(function(p){return p.universe===0;});
     var addr = 1;
     used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){
-      if(p.startAddr<=addr && addr<p.startAddr+DMX_FP) addr=p.startAddr+DMX_FP;
+      if(p.startAddr<=addr && addr<p.startAddr+7) addr=p.startAddr+7;
     });
-    if(addr+DMX_FP-1>512){ if(typeof toast==='function') toast('Universe 0 full','err'); return; }
+    if(addr+6>512){ if(typeof toast==='function') toast('Universe 0 full','err'); return; }
     var isOnline2 = headsData.some(function(h){return h.fixID===fixID;});
     fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({fixID:fixID,universe:0,startAddr:addr})
-    }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-    .then(function(res){
-      if(res.ok){
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
         anPatches.push({fixID:fixID,universe:0,startAddr:addr});
         if(isOnline2) patchAcks[fixID]={status:'pending',ts:Date.now()/1000};
         nh_render();
         if(typeof toast==='function') toast(isOnline2?'Patched Fix#'+fixID+' \u2192 Uni 0 Addr '+addr+' \u2014 waiting for ESP\u2026':'Patch saved for Fix#'+fixID+' (ESP offline)');
-      } else {
-        if(typeof toast==='function') toast((res.d&&res.d.message)||'Patch conflict','err');
-      }
+      } else if(typeof toast==='function') toast(d.message||'Error','err');
     });
   };
 
-  // ── Diagnostic: watch module-container for re-injection ─────────
-  (function(){
-    // Watch the PARENT container — if loadModule() fires again, it does
-    // el.innerHTML = html on #module-container, which fires this observer.
-    var container = document.getElementById('module-container');
-    if(!container) { console.warn('[nh] #module-container not found for observer'); return; }
-    var obs = new MutationObserver(function(){
-      console.error('[nh] *** module-container WAS RE-INJECTED *** — loadModule ran again');
-      console.trace('[nh] re-injection trace');
-    });
-    obs.observe(container, {childList: true, subtree: false});
-    console.log('[nh] container observer attached');
-  })();
-
 })(); // end IIFE
 </script>
+)=====";

@@ -20,6 +20,9 @@ import threading
 import time
 import json
 import os
+import re
+import platform
+import subprocess
 import logging
 import urllib.request
 from flask import Flask, request, jsonify, send_from_directory
@@ -31,7 +34,7 @@ APP_VERSION = "PC App v4.2"
 BEACON_PORT   = 4210
 CMD_PORT      = 4211
 BEACON_INTERVAL = 1.0       # seconds
-PEER_TIMEOUT    = 12.0      # seconds before peer is removed (ESP32 beacons every 2s)
+PEER_TIMEOUT    = 90.0      # seconds before peer is removed (HTTP keepalive refreshes every 10 s)
 OWN_FIX_ID      = 0         # set your fixture ID here
 CUES_FILE      = "pc_cues.json"
 DATA_FILE      = "pc_data.json"       # unified device data (replaces the three below)
@@ -79,7 +82,7 @@ def pc_log(category: str, msg: str):
     with _log_flags_lock:
         enabled = _log_flags.get(category, True)
     if enabled:
-        print(msg)
+        print(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
 _load_log_flags()
 
@@ -94,19 +97,91 @@ def get_own_mac():
     # Use a fixed "MAC" so we always win leader election (00:00:... is smallest)
     return "00:00:00:00:00:PC"
 
-def get_own_ip():
+def _get_lan_ips() -> list:
+    """
+    Return list of (ip, broadcast) tuples for all active LAN interfaces.
+    Reads the actual broadcast address from ifconfig/PowerShell so subnet
+    sizes other than /24 work correctly (e.g. /16 → 172.18.255.255).
+    """
+    pairs = []
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        if platform.system() == "Windows":
+            flags = 0x08000000  # CREATE_NO_WINDOW
+            # PowerShell: get IP + prefix length, compute broadcast manually
+            out = subprocess.check_output(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-NetIPAddress -AddressFamily IPv4 | "
+                 "Select-Object IPAddress,PrefixLength | ConvertTo-Csv -NoTypeInformation"],
+                text=True, timeout=5, creationflags=flags
+            )
+            for line in out.strip().splitlines()[1:]:
+                parts = line.strip('"').replace('"', '').split(',')
+                if len(parts) < 2:
+                    continue
+                ip, prefix = parts[0].strip(), parts[1].strip()
+                if not ip or ip.startswith("127.") or ip.startswith("169.254."):
+                    continue
+                try:
+                    prefix = int(prefix)
+                    mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+                    ip_int = struct.unpack("!I", socket.inet_aton(ip))[0]
+                    bcast_int = ip_int | (~mask & 0xFFFFFFFF)
+                    bcast = socket.inet_ntoa(struct.pack("!I", bcast_int))
+                    pairs.append((ip, bcast))
+                except Exception:
+                    pass
+        else:
+            # macOS / Linux: parse "inet <ip> netmask <mask> broadcast <bcast>"
+            out = subprocess.check_output(["ifconfig"], text=True, timeout=5)
+            for m in re.finditer(
+                r'inet (\d+\.\d+\.\d+\.\d+).*?broadcast (\d+\.\d+\.\d+\.\d+)',
+                out
+            ):
+                ip, bcast = m.group(1), m.group(2)
+                if (not ip.startswith("127.") and not ip.startswith("169.254.")
+                        and bcast != ip):   # skip point-to-point (/32) interfaces
+                    pairs.append((ip, bcast))
     except Exception:
-        return "127.0.0.1"
+        pass
+
+    # Fallback: connect trick + assume /24
+    if not pairs:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip and ip != "0.0.0.0" and not ip.startswith("127."):
+                pairs.append((ip, ip.rsplit(".", 1)[0] + ".255"))
+        except Exception:
+            pass
+
+    # Deduplicate by IP
+    seen, result = set(), []
+    for ip, bcast in pairs:
+        if ip not in seen:
+            seen.add(ip)
+            result.append((ip, bcast))
+    return result
+
+def get_own_ip() -> str:
+    """Best single LAN IP — used for beacon/status display."""
+    pairs = _get_lan_ips()
+    return pairs[0][0] if pairs else "127.0.0.1"
 
 def get_broadcast_addr(ip: str) -> str:
-    """Derive subnet broadcast from IP — assumes /24."""
+    """Broadcast for a given IP — looks up actual value from ifconfig."""
+    for lip, bcast in _get_lan_ips():
+        if lip == ip:
+            return bcast
+    # Fallback: assume /24
     return ip.rsplit(".", 1)[0] + ".255"
+
+def get_all_broadcast_addrs() -> list:
+    """Correct broadcast address for every active LAN interface."""
+    pairs  = _get_lan_ips()
+    bcasts = list(dict.fromkeys(bcast for _, bcast in pairs))
+    return bcasts if bcasts else ["255.255.255.255"]
 
 OWN_MAC        = get_own_mac()
 OWN_IP         = get_own_ip()
@@ -117,7 +192,7 @@ BROADCAST_ADDR = get_broadcast_addr(OWN_IP)
 peers_lock = threading.Lock()
 peers = {}  # mac -> {mac, ip, fixID, name, role, lastSeen}
 
-def update_peer(mac, ip, fix_id, role, name=""):
+def update_peer(mac, ip, fix_id, role, name="", mode="UDP"):
     should_push = False
     resend_fid  = 0   # >0 means we need to re-send SETFIXID to the ESP
     use_fid     = 0
@@ -160,24 +235,14 @@ def update_peer(mac, ip, fix_id, role, name=""):
             "ip":       ip,
             "fixID":    use_fid,
             "name":     name,
+            "mode":     mode,
             "role":     "LEADER" if role in ("LEADER", "1") else "FOLLOWER",
             "lastSeen": time.time()
         }
 
-    # ── Beacon-based name confirmation ───────────────────────────────
-    # If the beacon's name matches the last name we sent to this MAC,
-    # the ESP has saved it — confirm the ACK even if NAMEACK was lost.
-    intended_name = _mac_names.get(mac, "")
-    if intended_name and name == intended_name:
-        with _name_ack_lock:
-            ack = _name_acks.get(mac)
-            if ack and ack["status"] in ("pending", "timeout"):
-                _name_acks[mac] = {"status": "ok", "ts": time.time()}
-                pc_log("discovery", f"[Name] Confirmed via beacon: {mac}  \"{name}\"")
-
-    # Re-send SETFIXID so ESP eventually adopts the leader-assigned value
+    # Re-send fixID via HTTP so ESP adopts the leader-assigned value
     if resend_fid > 0:
-        udp_send(ip, mac, f"SETFIXID:{resend_fid}")
+        http_config_async(ip, "fixid", {"fixID": resend_fid})
 
     # Auto-register in fixture pool using the effective fixID (not the raw beacon value)
     if use_fid > 0:
@@ -299,29 +364,35 @@ def save_cues():
 artnet_patches_lock = threading.Lock()
 artnet_patches = []  # list of patch dicts
 
-# ── Patch ACK tracking ────────────────────────────────────────────
-_patch_ack_lock = threading.Lock()
-_patch_acks = {}   # fixID(int) → {"status": "pending"|"ok"|"timeout", "ts": float}
+# ── HTTP config sender ────────────────────────────────────────────
 
-def _patch_mark_pending(fix_id: int):
-    with _patch_ack_lock:
-        _patch_acks[int(fix_id)] = {"status": "pending", "ts": time.time()}
+def http_config_send(ip: str, endpoint: str, data: dict) -> bool:
+    """Send a config command via HTTP POST to /api/config/<endpoint>.
+    Synchronous — caller blocks until the ESP responds or times out (3 s).
+    Returns True on HTTP 200, False on any error."""
+    url  = f"http://{ip}/api/config/{endpoint}"
+    body = json.dumps(data).encode()
+    req  = urllib.request.Request(
+        url, data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            ok = resp.status == 200
+            if ok:
+                pc_log("udp", f"[Config] {endpoint} → {ip}  ok")
+            return ok
+    except Exception as e:
+        pc_log("udp", f"[Config] {endpoint} → {ip}  failed: {e}")
+        return False
 
-def _patch_mark_ok(fix_id: int):
-    with _patch_ack_lock:
-        _patch_acks[int(fix_id)] = {"status": "ok", "ts": time.time()}
-
-# ── Name ACK tracking ─────────────────────────────────────────────
-_name_ack_lock = threading.Lock()
-_name_acks = {}    # mac(str) → {"status": "pending"|"ok"|"timeout", "ts": float}
-
-def _name_mark_pending(mac: str):
-    with _name_ack_lock:
-        _name_acks[mac] = {"status": "pending", "ts": time.time()}
-
-def _name_mark_ok(mac: str):
-    with _name_ack_lock:
-        _name_acks[mac] = {"status": "ok", "ts": time.time()}
+def http_config_async(ip: str, endpoint: str, data: dict):
+    """Fire-and-forget config send — runs http_config_send in a daemon thread.
+    Use when calling from the beacon-receiver thread to avoid blocking it."""
+    threading.Thread(
+        target=http_config_send, args=(ip, endpoint, data), daemon=True
+    ).start()
 
 def load_artnet_patches():
     pass   # handled by load_data() at startup
@@ -627,12 +698,13 @@ def get_artnet_status() -> dict:
 # ── Art-Net patch push helpers ────────────────────────────────────
 
 def push_patch_to_esp(fix_id: int, universe: int, start_addr: int):
-    """Send SETPATCH UDP to the ESP that owns this fixID (if online)."""
+    """Send SETPATCH via HTTP to the ESP that owns this fixID (if online)."""
     for p in get_peers():
         if int(p.get("fixID", 0)) == fix_id:
-            udp_send(p["ip"], p["mac"], f"SETPATCH:{fix_id},{universe},{start_addr}")
-            pc_log("artnet", f"[ArtNet] Pushed SETPATCH:{fix_id},{universe},{start_addr} → {p['ip']}")
-            _patch_mark_pending(fix_id)
+            ok = http_config_send(p["ip"], "patch",
+                                  {"fixID": fix_id, "universe": universe, "startAddr": start_addr})
+            if ok:
+                pc_log("artnet", f"[ArtNet] Patch confirmed Fix#{fix_id} U{universe}@{start_addr} → {p['ip']}")
             return
     pc_log("sync", f"[ArtNet] Fix#{fix_id} not online — patch stored locally only")
 
@@ -658,36 +730,77 @@ def _push_config_on_join(reported_fid: int, ip: str, mac: str):
         with peers_lock:
             if mac in peers:
                 peers[mac]["fixID"] = stored_fid   # keep local table consistent
-        udp_send(ip, mac, f"SETFIXID:{stored_fid}")
-        pc_log("sync", f"[Sync] Push SETFIXID:{stored_fid} → {ip}")
+        http_config_async(ip, "fixid", {"fixID": stored_fid})
+        pc_log("sync", f"[Sync] Push fixid:{stored_fid} → {ip}")
         fid = stored_fid
 
     # 3. Push stored name so the ESP always has the PC-assigned label.
-    #    No _name_mark_pending here — this is an automatic sync push, not a user edit.
-    #    The ✓/⟳/✗ ACK indicator is only set from api_set_name (user action).
     if stored_name:
-        udp_send(ip, mac, f"SETNAME:{stored_name}")
-        pc_log("sync", f"[Sync] Push SETNAME:{stored_name} → {ip}")
+        http_config_async(ip, "name", {"name": stored_name})
+        pc_log("sync", f"[Sync] Push name:\"{stored_name}\" → {ip}")
 
     # 4. Push Art-Net patch for whichever fixID we settled on.
-    #    No _patch_mark_pending here — same reason as above.
     if fid > 0:
         with artnet_patches_lock:
             patch = next((p for p in artnet_patches if p["fixID"] == fid), None)
         if patch:
-            udp_send(ip, mac, f"SETPATCH:{fid},{patch['universe']},{patch['startAddr']}")
-            pc_log("sync", f"[Sync] Push SETPATCH:{fid},{patch['universe']},{patch['startAddr']} → {ip}")
+            http_config_async(ip, "patch",
+                              {"fixID": fid, "universe": patch["universe"], "startAddr": patch["startAddr"]})
+            pc_log("sync", f"[Sync] Push patch:{fid} U{patch['universe']}@{patch['startAddr']} → {ip}")
 
 # ── UDP beacon sender ─────────────────────────────────────────────
 def beacon_sender():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock       = None
+    _err_count = 0
+    _last_ip   = None
     while True:
-        pkt = f"MINIHEAD|{OWN_MAC}|{OWN_IP}|{OWN_FIX_ID}|LEADER|PC"
-        try:
-            sock.sendto(pkt.encode(), (BROADCAST_ADDR, BEACON_PORT))
-        except Exception as e:
-            pc_log("udp", f"[Beacon] Send error: {e}")
+        cur_ip     = get_own_ip()
+        bcasts     = get_all_broadcast_addrs()
+        pkt        = f"MINIHEAD|{OWN_MAC}|{cur_ip}|{OWN_FIX_ID}|LEADER|PC".encode()
+
+        if cur_ip != _last_ip and cur_ip != "127.0.0.1":
+            pc_log("udp", f"[Beacon] Interface: {cur_ip}  broadcast → {', '.join(bcasts)}")
+            _last_ip = cur_ip
+
+        sent_ok = False
+        for bcast in bcasts:
+            try:
+                if sock is None:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.sendto(pkt, (bcast, BEACON_PORT))
+                sent_ok = True
+            except OSError:
+                # This broadcast address failed — recreate socket and try next
+                try: sock.close()
+                except Exception: pass
+                sock = None
+
+        if sent_ok:
+            if _err_count > 0:
+                pc_log("udp", f"[Beacon] Recovered after {_err_count} error(s)")
+            _err_count = 0
+        else:
+            # All interfaces failed — log sparingly
+            if _err_count == 0 or _err_count % 30 == 0:
+                pc_log("udp", f"[Beacon] No usable interface (attempt {_err_count+1}) — waiting for network...")
+            _err_count += 1
+
+        # Unicast to each known peer so Fritz!Box broadcast-blocking doesn't break
+        # the connection — keeps the ESP's PC-peer entry alive even if broadcasts
+        # are suppressed between WiFi and wired interfaces.
+        for p in get_peers():
+            pip = p.get("ip", "")
+            if not pip or pip in bcasts:
+                continue
+            try:
+                if sock is None:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.sendto(pkt, (pip, BEACON_PORT))
+            except Exception:
+                pass
+
         expire_peers()
         time.sleep(BEACON_INTERVAL)
 
@@ -701,21 +814,6 @@ def beacon_receiver():
         try:
             data, addr = sock.recvfrom(256)
             msg = data.decode().strip()
-            if msg.startswith("PATCHACK|"):
-                parts = msg.split("|")
-                if len(parts) >= 3:
-                    try:
-                        _patch_mark_ok(int(parts[2]))
-                        pc_log("artnet", f"[ArtNet] PATCHACK Fix#{parts[2]} from {parts[1]}")
-                    except ValueError:
-                        pass
-                continue
-            if msg.startswith("NAMEACK|"):
-                parts = msg.split("|")
-                if len(parts) >= 2:
-                    _name_mark_ok(parts[1].upper())
-                    pc_log("discovery", f"[Name] NAMEACK from {parts[1]}")
-                continue
             if not msg.startswith("MINIHEAD|"):
                 continue
             parts = msg.split("|")
@@ -723,9 +821,10 @@ def beacon_receiver():
                 continue
             _, mac, ip, fix_id, role = parts[:5]
             name = parts[5] if len(parts) > 5 else ""
+            mode = parts[6] if len(parts) > 6 else "UDP"
             if mac == OWN_MAC:
                 continue  # ignore own beacon
-            update_peer(mac, ip, fix_id, role, name)
+            update_peer(mac, ip, fix_id, role, name, mode)
         except socket.timeout:
             pass
         except Exception as e:
@@ -741,20 +840,36 @@ _cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 _cmd_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 pc_log("udp", f"[UDP] Cmd socket ready (unbound — OS picks interface per destination)")
 
+# Broadcast address cache — refreshed every 10 s so DHCP changes are picked up
+# without running `ifconfig` on every UDP send (which would be very frequent).
+_bcast_cache_addr: str = BROADCAST_ADDR
+_bcast_cache_ts:   float = 0.0
+
+def _get_bcast_cached() -> str:
+    global _bcast_cache_addr, _bcast_cache_ts
+    now = time.time()
+    if now - _bcast_cache_ts > 10.0:
+        fresh = get_broadcast_addr(get_own_ip())
+        if fresh:
+            _bcast_cache_addr = fresh
+        _bcast_cache_ts = now
+    return _bcast_cache_addr
+
 def udp_send(ip, target_mac, command):
-    pkt = f"CMD|{target_mac}|{command}".encode()
-    sent = False
+    pkt   = f"CMD|{target_mac}|{command}".encode()
+    bcast = _get_bcast_cached()   # cached — refreshed every 10 s
+    sent  = False
     # 1) Directed subnet broadcast — reaches all devices including WiFi clients
     #    even when the PC is on Ethernet (Fritz!Box forwards subnet broadcasts).
     try:
-        _cmd_sock.sendto(pkt, (BROADCAST_ADDR, CMD_PORT))
+        _cmd_sock.sendto(pkt, (bcast, CMD_PORT))
         sent = True
     except Exception as e:
-        pc_log("udp", f"[UDP] Broadcast error ({BROADCAST_ADDR}:{CMD_PORT}): {e}")
+        pc_log("udp", f"[UDP] Broadcast error ({bcast}:{CMD_PORT}): {e}")
     # 2) Unicast fallback — after receiving a beacon from the ESP the ARP entry
     #    is cached, so unicast resolves correctly even across WiFi/Ethernet boundary.
     #    Duplicate delivery is harmless: ESP overwrites NVS with the same values.
-    if ip and ip not in ("", "0.0.0.0", BROADCAST_ADDR):
+    if ip and ip not in ("", "0.0.0.0", bcast):
         try:
             _cmd_sock.sendto(pkt, (ip, CMD_PORT))
             sent = True
@@ -766,42 +881,83 @@ def udp_send(ip, target_mac, command):
         pc_log("udp", f"[UDP] FAILED → {target_mac}  {command}")
 
 def udp_identify(ip, target_mac, on: bool):
-    kind = "IDENTIFY_ON" if on else "IDENTIFY_OFF"
-    pkt  = f"{kind}|{target_mac}".encode()
+    kind  = "IDENTIFY_ON" if on else "IDENTIFY_OFF"
+    pkt   = f"{kind}|{target_mac}".encode()
+    bcast = _get_bcast_cached()
     try:
-        _cmd_sock.sendto(pkt, (BROADCAST_ADDR, CMD_PORT))
+        _cmd_sock.sendto(pkt, (bcast, CMD_PORT))
     except Exception as e:
-        pc_log("udp", f"[UDP] Identify error (bcast {BROADCAST_ADDR}): {e}")
+        pc_log("udp", f"[UDP] Identify error (bcast {bcast}): {e}")
     # Unicast fallback — same dual-send strategy as udp_send
-    if ip and ip not in ("", "0.0.0.0", BROADCAST_ADDR):
+    if ip and ip not in ("", "0.0.0.0", bcast):
         try:
             _cmd_sock.sendto(pkt, (ip, CMD_PORT))
         except Exception:
             pass
 
 def udp_broadcast(command):
+    # Unicast directly to each peer — avoids the broadcast+unicast double-send
+    # that udp_send() does, which would make every ESP execute the command twice.
     for p in get_peers():
-        udp_send(p["ip"], p["mac"], command)
+        pip = p.get("ip", "")
+        if not pip:
+            continue
+        pkt = f"CMD|{p['mac']}|{command}".encode()
+        try:
+            _cmd_sock.sendto(pkt, (pip, CMD_PORT))
+            pc_log("udp", f"[UDP] → {p['mac']}  {command}")
+        except Exception as e:
+            pc_log("udp", f"[UDP] FAILED → {p['mac']}  {e}")
+
+# ── HTTP keepalive ────────────────────────────────────────────────
+# Fritz!Box (and many home APs) block UDP unicast from WiFi clients to
+# wired-LAN clients, so ESP→PC beacons never arrive and peers expire.
+# This thread polls each peer via TCP (HTTP GET /api/status) every 10 s.
+# A successful reply proves the ESP is alive → refresh lastSeen so the
+# peer never expires as long as HTTP works.
+def http_keepalive():
+    while True:
+        for p in get_peers():
+            ip  = p.get("ip",  "")
+            mac = p.get("mac", "")
+            if not ip or not mac:
+                continue
+            try:
+                with urllib.request.urlopen(
+                    f"http://{ip}/api/status", timeout=5
+                ) as resp:
+                    if resp.status == 200:
+                        with peers_lock:
+                            if mac in peers:
+                                peers[mac]["lastSeen"] = time.time()
+                        pc_log("discovery", f"[Keepalive] {mac[-8:]}  {ip}  ok")
+                    else:
+                        pc_log("discovery", f"[Keepalive] {mac[-8:]}  {ip}  status={resp.status}")
+            except Exception as e:
+                pc_log("discovery", f"[Keepalive] {mac[-8:]}  {ip}  FAIL: {e}")
+        time.sleep(10.0)
 
 # ── Flask app ─────────────────────────────────────────────────────
 app = Flask(__name__)
 
 # ── Serve Web UI ──────────────────────────────────────────────────
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 @app.route("/")
 def serve_ui():
-    return send_from_directory(".", "index.html")
+    return send_from_directory(_APP_DIR, "index.html")
 
 @app.route("/plugins/wifi/discovery_panel.html")
 def serve_discovery_panel():
-    return send_from_directory("plugins/wifi", "discovery_panel.html")
+    return send_from_directory(os.path.join(_APP_DIR, "plugins/wifi"), "discovery_panel.html")
 
 @app.route("/plugins/artnet/artnet_panel.html")
 def serve_artnet_panel():
-    return send_from_directory("plugins/artnet", "artnet_panel.html")
+    return send_from_directory(os.path.join(_APP_DIR, "plugins/artnet"), "artnet_panel.html")
 
 @app.route("/plugins/log/log_panel.html")
 def serve_log_panel():
-    return send_from_directory("plugins/log", "log_panel.html")
+    return send_from_directory(os.path.join(_APP_DIR, "plugins/log"), "log_panel.html")
 
 @app.route("/css/theme.css")
 def serve_theme():
@@ -824,6 +980,12 @@ def serve_css(filename):
 def serve_js(filename):
     return send_from_directory(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "js"), filename
+    )
+
+@app.route("/fonts/<path:filename>")
+def serve_fonts(filename):
+    return send_from_directory(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"), filename
     )
 
 # ── /api/logconfig  (PC log flags) ───────────────────────────────
@@ -898,6 +1060,7 @@ def api_get_heads():
         "fixID": OWN_FIX_ID,
         "name":  "PC",
         "role":  "LEADER",
+        "mode":  "PC",
         "self":  True
     }]
     for p in get_peers():
@@ -919,8 +1082,8 @@ def api_set_fixid(mac):
             return jsonify({"status": "error", "message": "Peer not found"}), 404
         peers[mac]["fixID"] = new_id
         ip = peers[mac]["ip"]
-    udp_send(ip, mac, f"SETFIXID:{new_id}")
-    pc_log("udp", f"[FixID] Sent SETFIXID:{new_id} → {ip}")
+    http_config_send(ip, "fixid", {"fixID": new_id})
+    pc_log("udp", f"[FixID] Set fixid:{new_id} → {ip}")
 
     # Update fixture pool: remove stale entries for this MAC, upsert with new ID
     with fixtures_lock:
@@ -974,8 +1137,9 @@ def api_set_fixid(mac):
         with artnet_patches_lock:
             patch = next((p for p in artnet_patches if p["fixID"] == new_id), None)
         if patch:
-            udp_send(ip, mac, f"SETPATCH:{new_id},{patch['universe']},{patch['startAddr']}")
-            pc_log("udp", f"[FixID] Pushed SETPATCH:{new_id},{patch['universe']},{patch['startAddr']} → {ip}")
+            http_config_send(ip, "patch",
+                             {"fixID": new_id, "universe": patch["universe"], "startAddr": patch["startAddr"]})
+            pc_log("udp", f"[FixID] Pushed patch:{new_id} U{patch['universe']}@{patch['startAddr']} → {ip}")
 
     return jsonify({"status": "ok", "fixID": new_id})
 
@@ -1008,11 +1172,10 @@ def api_set_name(mac):
                     fixtures[peer_fid]["mac"]  = mac
                     fixtures[peer_fid]["name"] = name
     save_fixtures()
-    # Forward name to the device via UDP
+    # Forward name to the device via HTTP
     for p in get_peers():
         if p["mac"] == mac:
-            udp_send(p["ip"], p["mac"], f"SETNAME:{name}")
-            _name_mark_pending(mac)
+            http_config_send(p["ip"], "name", {"name": name})
             break
     return jsonify({"status": "ok"})
 
@@ -1078,7 +1241,8 @@ def api_send():
     targets = data.get("targets", [])
 
     if not targets:
-        pc_log("udp", f"[CMD] Self: {cmd}")
+        pc_log("udp", f"[CMD] All: {cmd}")
+        udp_broadcast(cmd)
     else:
         for mac in targets:
             if mac == "*":
@@ -1086,7 +1250,7 @@ def api_send():
                 udp_broadcast(cmd)
                 break
             elif mac in (OWN_MAC, "self"):
-                pc_log("udp", f"[CMD] Self: {cmd}")
+                pass  # PC has no physical output
             else:
                 for p in get_peers():
                     if p["mac"] == mac.upper():
@@ -1208,14 +1372,24 @@ def sequencer_runner():
                     cue = next((c for c in cues if c["id"] == tid), None)
                 if cue:
                     cmd = f"R:{cue['r']},G:{cue['g']},B:{cue['b']},W:{cue['w']},PAN:{cue['pan']},TILT:{cue['tilt']}"
+                    label = cue.get("name") or str(tid)
                     seq_ft = cue.get("fixTargets", [0]) or [0]
+                    ft_str = "ALL" if seq_ft == [0] else str(seq_ft)
+                    pc_log("udp", f"[Seq] Step {s['index']+1}/{len(s['cue_ids'])} '{label}'  targets={ft_str}  {cmd}")
                     for fid in seq_ft:
                         if fid == 0:
                             udp_broadcast(cmd); break
                         else:
+                            matched = False
                             for p in get_peers():
                                 if int(p.get("fixID", 0)) == fid:
-                                    udp_send(p["ip"], p["mac"], cmd); break
+                                    udp_send(p["ip"], p["mac"], cmd)
+                                    matched = True
+                                    break
+                            if not matched:
+                                pc_log("udp", f"[Seq] No peer for Fix#{fid} — skipped")
+                else:
+                    pc_log("udp", f"[Seq] Cue #{tid} not found — skipped")
                 with seq_lock:
                     seq_state["last_step"] = now
                     seq_state["index"] += 1
@@ -1340,28 +1514,6 @@ def api_artnet_clear_universe(uni):
             save_artnet_patches()
     return jsonify({"status": "ok", "removed": removed})
 
-@app.route("/api/artnet/patch/ack")
-def api_patch_ack():
-    now = time.time()
-    result = {}
-    with _patch_ack_lock:
-        for fid, ack in _patch_acks.items():
-            if ack["status"] == "pending" and now - ack["ts"] > 8.0:
-                ack["status"] = "timeout"
-            result[str(fid)] = dict(ack)
-    return jsonify(result)
-
-@app.route("/api/heads/ack")
-def api_name_ack():
-    now = time.time()
-    result = {}
-    with _name_ack_lock:
-        for mac, ack in _name_acks.items():
-            if ack["status"] == "pending" and now - ack["ts"] > 8.0:
-                ack["status"] = "timeout"
-            result[mac] = dict(ack)
-    return jsonify(result)
-
 @app.route("/api/artnet/patch/bulk", methods=["POST"])
 def api_artnet_bulk():
     data       = request.get_json() or {}
@@ -1425,6 +1577,7 @@ if __name__ == "__main__":
     threading.Thread(target=beacon_receiver,  daemon=True).start()
     threading.Thread(target=sequencer_runner, daemon=True).start()
     threading.Thread(target=artnet_sniffer,   daemon=True).start()
+    threading.Thread(target=http_keepalive,   daemon=True).start()
 
     print(f"[PC Leader] {APP_VERSION}")
     print(f"[PC Leader] MAC:  {OWN_MAC}")
@@ -1432,4 +1585,8 @@ if __name__ == "__main__":
     print(f"[PC Leader] Open: http://localhost:8080")
     print(f"[PC Leader] Beaconing on port {BEACON_PORT}, CMD on port {CMD_PORT}")
 
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    try:
+        from waitress import serve
+        serve(app, host="0.0.0.0", port=8080, threads=8)
+    except ImportError:
+        app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)

@@ -10,13 +10,14 @@ enum NodeRole { ROLE_UNDECIDED, ROLE_LEADER, ROLE_FOLLOWER };
 #define BEACON_PORT        4210
 #define CMD_PORT           4211
 #define BEACON_INTERVAL_MS 2000
-#define LEADER_TIMEOUT_MS  20000   // peer goes stale after 20s (tolerates brief WiFi gaps)
+#define LEADER_TIMEOUT_MS  30000   // peer goes stale after 30s (matches PC PEER_TIMEOUT)
 #define HOLD_DURATION_MS   10000   // hold current state 10s before re-electing as leader
 
 struct Peer {
   char mac[18];
   char ip[16];
   char name[32];
+  char mode[8];    // "UDP" or "ARTNET"
   int  fixID;
   NodeRole role;
   unsigned long lastSeen;
@@ -27,6 +28,7 @@ struct Peer {
 extern NodeRole nodeRole;
 extern char     ownMAC[18];
 extern char     ownIP[16];
+extern char     ownMode[8];   // "UDP" or "ARTNET"
 extern int      ownFixID;
 extern char     ownName[32];
 extern Peer     peers[MAX_PEERS];

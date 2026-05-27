@@ -1,30 +1,52 @@
 #pragma once
 
+// Signals to udp_commands.h that the real artnet_upsertPatch is provided here.
+#define PLUGIN_ARTNET
+
 // ── Art-Net Plugin ────────────────────────────────────────────────
 // Entry point for the Art-Net / DMX512 plugin.
 // Registers artnet_setup() and artnet_loop() via REGISTER_PLUGIN.
 //
-// This plugin runs on EVERY node (both leader and follower):
-//   - Every ESP listens on port 6454 for Art-Net packets
-//   - Each ESP applies channels that match its own patched fixID
-//   - The leader additionally fans out data to followers via UDP CMD
+// Owns:
+//   • Art-Net UDP receiver on port 6454    (artnet_receiver.h)
+//   • HTTP patch management API            (artnet_control.h)
+//   • Art-Net panel HTML                   (artnet_panel_html.h)
 //
-// HTTP routes and LittleFS storage are handled by artnet_control.h,
-// which is included from wifi_control.h (shares the HTTP server).
-//
-// Add to config.h:
-//   #include "plugins/artnet/artnet.h"
-// (after plugins/wifi/wifi.h)
+// Must come after plugins/wifi/wifi.h (and udp_control if used) in config.h.
 // ─────────────────────────────────────────────────────────────────
 
 #include "../../plugin_registry.h"
 #include "artnet_globals.h"
 #include "artnet_receiver.h"
+#include "artnet_control.h"
+#include "artnet_panel_html.h"
 
 void artnet_setup() {
   artnet_receiver_setup();
-  // artnet_control_setup() (LittleFS patch load) is called from wifi_control_setup()
-  // so patches are available before the first Art-Net packet arrives.
+  artnet_control_setup();
+
+  // Panel HTML
+  server.on("/plugins/artnet/panel.html", HTTP_GET,
+    [](AsyncWebServerRequest* r) { sendHtmlProgmem(r, ARTNET_PANEL_HTML, true); });
+
+  // Art-Net API routes
+  server.on("/api/artnet/status",     HTTP_GET,    [](AsyncWebServerRequest* r){ handleArtnetStatus(r); });
+  server.on("/api/artnet/patch",      HTTP_GET,    [](AsyncWebServerRequest* r){ handleGetArtnetPatch(r); });
+  server.on("/api/artnet/patch",      HTTP_DELETE, [](AsyncWebServerRequest* r){ handleClearAllArtnetPatches(r); });
+  server.on("/api/artnet/patch/bulk", HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleBulkArtnetPatch(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/artnet/patch",      HTTP_POST,
+    [](AsyncWebServerRequest* r){ handlePostArtnetPatch(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/artnet/patch/*",    HTTP_DELETE, [](AsyncWebServerRequest* r){
+    String path = r->url();
+    if (path.startsWith("/api/artnet/patch/universe/")) handleClearUniverseArtnetPatches(r);
+    else                                                handleDeleteArtnetPatch(r);
+  });
+  server.on("/api/artnet/patch/*",    HTTP_PUT,
+    [](AsyncWebServerRequest* r){ handleUpdateArtnetPatch(r); },
+    nullptr, _bodyAccumulator);
 }
 
 void artnet_loop() {

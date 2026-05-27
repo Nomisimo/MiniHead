@@ -13,6 +13,9 @@
   .role-badge{padding:1px 5px;border-radius:2px;font-size:9px;letter-spacing:1px;}
   .role-badge.leader{background:rgba(0,229,255,0.15);color:var(--accent);}
   .role-badge.follower{background:rgba(107,107,138,0.2);color:var(--text-dim);}
+  .mode-badge{margin-left:3px;padding:1px 4px;border-radius:2px;font-size:9px;letter-spacing:1px;}
+  .mode-badge.udp{background:rgba(168,85,247,0.15);color:var(--accent3);}
+  .mode-badge.artnet{background:rgba(255,107,53,0.15);color:var(--accent2);}
   .identify-btn{padding:3px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:10px;border-radius:3px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;letter-spacing:1px;}
   .identify-btn.holding{border-color:#ffffff;color:#ffffff;background:rgba(255,255,255,0.12);}
   .dup-warn{color:var(--danger);font-size:9px;margin-left:2px;}
@@ -43,11 +46,14 @@
         <th>MAC</th>
         <th>IP</th>
         <th>Role</th>
+        <th>Uni</th>
+        <th>Addr</th>
+        <th></th>
         <th>Identify</th>
       </tr>
     </thead>
     <tbody id="nh_tbody">
-      <tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
+      <tr><td colspan="10" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
     </tbody>
   </table>
 </div>
@@ -57,6 +63,7 @@
   // ── State ────────────────────────────────────────────────────
   var headsData             = [];
   var fixturePool           = [];
+  var anPatches             = [];
   var selectedMACs          = [];
   var selectedOfflineFixIDs = [];
   var identTimers           = {};
@@ -69,10 +76,12 @@
   function nh_load() {
     Promise.all([
       fetch('/api/heads').then(function(r){return r.json();}),
-      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];})
+      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch').then(function(r){return r.ok?r.json():[];}).catch(function(){return[];})
     ]).then(function(res){
       headsData   = res[0];
       fixturePool = res[1];
+      anPatches   = res[2];
       nh_render();
     }).catch(function(){});
   }
@@ -86,7 +95,7 @@
 
     if (!headsData || !headsData.length) {
       var empty = document.createElement('tr');
-      empty.innerHTML = '<td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td>';
+      empty.innerHTML = '<td colspan="10" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td>';
       tbody.appendChild(empty);
     } else {
       var fixCount = {};
@@ -101,6 +110,34 @@
       headsData.forEach(function(h){
         var sel = selectedMACs.indexOf(h.mac)>=0;
         var dup = h.fixID>0 && fixCount[h.fixID]>1;
+        var isArtnet = (h.mode === 'ARTNET');
+        var modeBadge='<span class="mode-badge '+(isArtnet?'artnet':'udp')+'">'+(h.mode||'UDP')+'</span>';
+        var anPatch = (h.fixID>0) ? anPatches.find(function(p){return p.fixID===h.fixID;}) : null;
+        var patchCells;
+        if(!isArtnet){
+          // UDP node: no DMX, gray out patch columns
+          patchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;opacity:0.4;">—</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;opacity:0.4;">—</td>'+
+            '<td></td>';
+        } else if(h.fixID>0 && anPatch){
+          patchCells=
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+anPatch.universe+'" min="0" max="32767"'+
+                ' onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--accent);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+anPatch.startAddr+'" min="1" max="512"'+
+                ' onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
+            '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+h.fixID+')">&#10005;</button></td>';
+        } else if(h.fixID>0){
+          patchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
+        } else {
+          patchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td></td>';
+        }
         var tr  = document.createElement('tr');
         if(sel) tr.className='selected-head';
         tr.innerHTML=
@@ -115,7 +152,8 @@
               ' placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)"></td>'+
           '<td style="color:var(--text-dim);" title="'+h.mac+'">…'+h.mac.slice(-8)+'</td>'+
           '<td style="color:var(--accent);">'+h.ip+'</td>'+
-          '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span></td>'+
+          '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span>'+modeBadge+'</td>'+
+          patchCells+
           '<td><button class="identify-btn" data-mac="'+h.mac+'"'+
             ' onmousedown="nh_identStart(\''+h.mac+'\')"'+
             ' onmouseup="nh_identStop(\''+h.mac+'\')"'+
@@ -136,10 +174,27 @@
     });
     if(offline.length>0){
       var sep=document.createElement('tr');
-      sep.innerHTML='<td colspan="7" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">── OFFLINE ──</td>';
+      sep.innerHTML='<td colspan="10" style="text-align:center;color:var(--text-dim);font-size:9px;letter-spacing:2px;padding:5px 0;border-top:1px solid var(--border);">── OFFLINE ──</td>';
       tbody.appendChild(sep);
       offline.forEach(function(f){
         var sel=selectedOfflineFixIDs.indexOf(f.id)>=0;
+        var offPatch=(f.id>0)?anPatches.find(function(p){return p.fixID===f.id;}):null;
+        var offPatchCells;
+        if(offPatch){
+          offPatchCells=
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+offPatch.universe+'" min="0" max="32767"'+
+                ' onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;background:var(--surface2);border:1px solid var(--border);color:var(--accent);padding:2px 4px;font-family:var(--mono);font-size:11px;border-radius:3px;text-align:center;-moz-appearance:textfield;" value="'+offPatch.startAddr+'" min="1" max="512"'+
+                ' onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
+            '<td><button style="width:22px;height:22px;border:1px solid var(--border);background:transparent;color:var(--danger);border-radius:3px;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+f.id+')">&#10005;</button></td>';
+        } else if(f.id>0){
+          offPatchCells=
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td style="color:var(--text-dim);font-family:var(--mono);font-size:10px;text-align:center;">—</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
+        } else {
+          offPatchCells='<td>—</td><td>—</td><td></td>';
+        }
         var tr=document.createElement('tr');
         tr.style.opacity='0.55';
         tr.innerHTML=
@@ -151,6 +206,7 @@
           '<td style="color:var(--text-dim);">'+(f.mac?('…'+f.mac.slice(-8)):'—')+'</td>'+
           '<td>—</td>'+
           '<td><span class="role-badge" style="background:rgba(107,107,138,0.15);color:var(--text-dim)">OFFLINE</span></td>'+
+          offPatchCells+
           '<td><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" title="Remove" style="color:var(--danger);border-color:var(--danger);">✕</button></td>';
         tbody.appendChild(tr);
       });
@@ -166,7 +222,7 @@
           ' class="add-input" style="width:78px;"></td>'+
       '<td><input type="text" id="nh_newMac" placeholder="MAC (opt)"'+
           ' class="add-input" style="width:88px;font-size:10px;color:var(--text-dim);"></td>'+
-      '<td colspan="2"></td>'+
+      '<td colspan="5"></td>'+
       '<td><button class="identify-btn" onclick="nh_addFixture()" style="color:var(--success);border-color:var(--success);">+</button></td>';
     tbody.appendChild(addRow);
 
@@ -324,6 +380,51 @@
     fetch('/api/heads/'+mac+'/identify',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({on:on})});
   }
+
+  // ── Art-Net patch helpers ─────────────────────────────────────
+  window.nh_patchUpdate = function(fixID, uni, addr) {
+    var p = anPatches.find(function(x){return x.fixID===fixID;});
+    if(!p) return;
+    var data = {universe:uni!==null?uni:p.universe, startAddr:addr!==null?addr:p.startAddr};
+    fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
+        if(uni!==null)  p.universe=uni;
+        if(addr!==null) p.startAddr=addr;
+        if(typeof toast==='function') toast('Patch updated');
+        // refresh artnet panel grid if present
+        if(typeof an_renderGrid==='function') an_renderGrid();
+      }
+    });
+  };
+  window.nh_patchDel = function(fixID) {
+    fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
+      anPatches = anPatches.filter(function(p){return p.fixID!==fixID;});
+      if(typeof toast==='function') toast('Patch removed');
+      nh_render();
+      if(typeof an_load==='function') an_load();
+    });
+  };
+  window.nh_patchCreate = function(fixID) {
+    // Auto-assign: pack into universe 0 after last used address
+    var used = anPatches.filter(function(p){return p.universe===0;});
+    var addr = 1;
+    used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){
+      if(p.startAddr<=addr && addr<p.startAddr+7) addr=p.startAddr+7;
+    });
+    if(addr+6>512){if(typeof toast==='function') toast('Universe 0 full','err');return;}
+    fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fixID:fixID,universe:0,startAddr:addr})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){
+        anPatches.push({fixID:fixID,universe:0,startAddr:addr});
+        if(typeof toast==='function') toast('Patched Fix#'+fixID+' → Uni 0 Addr '+addr);
+        nh_render();
+        if(typeof an_load==='function') an_load();
+      } else if(typeof toast==='function') toast(d.message||'Error','err');
+    });
+  };
 
   // ── Expose to main page ───────────────────────────────────────
   window.nh_getSelectedMACs   = function(){ return selectedMACs.slice(); };

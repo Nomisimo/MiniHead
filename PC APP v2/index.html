@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Nano Moving Light</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">NANO<span>/</span>ML <span style="font-size:10px;color:var(--text-dim)">CTRL</span></div>
+  <div class="connection-bar">
+    <div class="status-dot"></div>
+    <span class="ip-label" id="ipLabel">...</span>
+    <span style="color:var(--text-dim)">PC LEADER</span>
+    <span style="color:var(--text-dim);font-size:10px;margin-left:4px;" id="appVersion"></span>
+  </div>
+</header>
+
+<div id="artnet-bar">
+  <div id="artnet-bar-dot"></div>
+  <span>ART-NET</span>
+  <span id="artnet-live"></span>
+  <span id="artnet-bar-count"></span>
+</div>
+
+<div class="main">
+
+  <!-- ── LEFT 2/3 ────────────────────────────────────────────────── -->
+
+  <!-- Cues -->
+  <div class="panel area-cues">
+    <div class="panel-title">// Cues</div>
+    <div class="cue-list" id="cueList"></div>
+    <div class="save-cue-form">
+      <input type="text" id="cueName" placeholder="Cue name..." maxlength="30">
+      <button class="btn primary" onclick="saveCue()">SAVE</button>
+    </div>
+  </div>
+
+  <!-- Sequencer -->
+  <div class="panel area-sequencer">
+    <div class="panel-title">// Sequencer</div>
+    <div class="seq-hint">Tap + on cues to add to sequence</div>
+    <div class="seq-controls">
+      <div class="seq-row">
+        <div class="seq-label">INTERVAL</div>
+        <input type="number" id="seqInterval" value="1000" min="100" max="30000" step="100" style="width:80px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">ms</span>
+      </div>
+      <div class="seq-row">
+        <div class="seq-label">LOOP</div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="seqLoop" checked style="accent-color:var(--accent3);width:18px;height:18px;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Repeat</span>
+        </label>
+      </div>
+    </div>
+    <div class="seq-buttons">
+      <button class="btn success" id="seqStartBtn" onclick="startSequencer()">START</button>
+      <button class="btn danger" onclick="stopSequencer()">STOP</button>
+    </div>
+    <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
+  </div>
+
+  <!-- area-future: Network Heads + Log Config -->
+  <div class="area-future" style="background:var(--bg)">
+
+    <!-- ── Network Heads Panel ── -->
+    <div class="panel" style="border-bottom:1px solid var(--border)">
+      <div class="panel-title-network">// Network Heads</div>
+
+      <div class="heads-toolbar" style="display:flex;gap:8px;margin-bottom:6px;align-items:center;flex-wrap:wrap;">
+        <button class="net-btn" onclick="nh_selectAll()">SELECT ALL</button>
+        <button class="net-btn" onclick="nh_clearSel()">UNSELECT ALL</button>
+        <span class="heads-sel-info" id="nh_selInfo">No heads selected</span>
+        <button class="net-btn primary"                    onclick="nh_sendLive()">SEND LIVE</button>
+        <button class="net-btn purple"                     onclick="nh_addToCue()">ADD TO CUE ▾</button>
+        <button class="net-btn" id="nh_patchToggle"        onclick="nh_togglePatchMode()">PATCH</button>
+        <button class="net-btn" id="nh_editBtn"            onclick="nh_startEdit()" style="color:#008000;font-weight:bold;">EDIT</button>
+        <button class="net-btn" id="nh_saveBtn"            onclick="nh_stopEdit()" style="display:none;color:#800000;font-weight:bold;outline:1px solid #800000;outline-offset:-3px;">SAVE ✓</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Select:</span>
+        <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_selectNoFix()">NO FIX#</button>
+        <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_selectNoDmx()">NO DMX</button>
+      </div>
+
+      <div class="patch-bar" id="nh_patchBar">
+        <span class="patch-bar-label">// Patch</span>
+        <span class="patch-next">Start&nbsp;Fix#</span>
+        <input type="number" id="nh_patchStart" class="patch-start" value="1" min="1" max="999" oninput="nh_onStartChange()">
+        <span class="patch-next">→&nbsp;Next:&nbsp;<strong id="nh_patchNextLabel">1</strong></span>
+        <span class="patch-next" id="nh_patchSelCount" style="color:var(--text-dim);"></span>
+        <div class="patch-btn-row">
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_resetPatchCounter()">RESET</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;color:var(--danger);border-color:var(--danger);" onclick="nh_clearFixIDs()">CLEAR FIX IDs</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_togglePatchMode()">CANCEL</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;color:var(--accent);font-weight:bold;" onclick="nh_patchDone()">DONE</button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;" id="nh_tableWrap">
+        <table class="heads-table">
+          <thead>
+            <tr>
+              <th></th><th>Fix#</th><th>Name</th><th>MAC</th><th>IP</th>
+              <th>Role</th><th>Uni</th><th>Addr</th><th></th>
+              <th class="identify-col">Identify</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="nh_tbody">
+            <tr><td colspan="11" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /network heads panel -->
+
+    <!-- ── DMX Patch Grid Panel ── -->
+    <div class="panel" style="border-bottom:1px solid var(--border)">
+      <div class="panel-title">// DMX Patch Grid</div>
+      <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;" id="pg_uniTabs"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Patch Fix#:</span>
+        <input type="number" id="pg_fixSel" min="1" max="999" value="1" style="width:44px;" title="Fix# to patch when clicking an empty channel">
+        <button class="net-btn" onclick="pg_clearAll()">CLEAR ALL</button>
+        <span id="pg_info" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <div id="pg_grid" class="pg-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── Log Config Panel ── -->
+    <div class="panel">
+      <div class="panel-title">// Log Config</div>
+      <div class="log-grid" id="logGrid"></div>
+      <button class="btn primary" onclick="logSave()">SAVE &amp; PUSH TO ESPs</button>
+    </div>
+
+  </div><!-- /area-future -->
+
+  <!-- ── RIGHT 1/3 ────────────────────────────────────────────────── -->
+
+  <!-- Light Control -->
+  <div class="panel area-light col-right">
+    <div class="panel-title">// Light Control</div>
+    <div class="faders-row">
+      <div class="fader-group fader-r">
+        <div class="fader-label">RED</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fR" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vR" oninput="document.getElementById('fR').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-g">
+        <div class="fader-label">GRN</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fG" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vG" oninput="document.getElementById('fG').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-b">
+        <div class="fader-label">BLU</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fB" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vB" oninput="document.getElementById('fB').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-w">
+        <div class="fader-label">WHT</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fW" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vW" oninput="document.getElementById('fW').value=this.value;onFader();">
+      </div>
+    </div>
+    <div class="preview-row"><div class="led-preview" id="ledPreview"></div></div>
+  </div>
+
+  <!-- Motion -->
+  <div class="panel area-motion col-right">
+    <div class="panel-title">// Motion</div>
+    <div class="motion-row">
+      <div class="motion-label">PAN</div>
+      <input type="range" class="horizontal" min="0" max="180" value="90" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
+      <input type="number" min="0" max="180" value="90" id="vPan" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fPan').value=this.value;onMotion();">
+    </div>
+    <div class="motion-row">
+      <div class="motion-label">TILT</div>
+      <input type="range" class="horizontal" min="0" max="180" value="45" id="fTilt" oninput="document.getElementById('vTilt').value=this.value;onMotion()">
+      <input type="number" min="0" max="180" value="45" id="vTilt" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fTilt').value=this.value;onMotion();">
+    </div>
+  </div>
+
+  <!-- Rainbow -->
+  <div class="panel area-rainbow col-right">
+    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
+  </div>
+
+  <!-- Serial -->
+  <div class="panel area-serial col-right">
+    <div class="panel-title">// Serial</div>
+    <div class="serial-row">
+      <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45">
+      <button class="btn primary" onclick="sendRaw()">SEND</button>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div id="toast"></div>
+
+<!-- ── Cue Edit Modal ── -->
+<div id="cueEditModal">
+  <div class="modal-box">
+    <div class="modal-title">// Edit Targets</div>
+    <div id="cueEditList"></div>
+    <div style="margin-top:10px;padding:0 16px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
+      <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;background:#ffffff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000;padding:4px 6px;font-family:var(--mono);font-size:11px;border-radius:0;outline:none;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn primary" onclick="cueEditSave()">SAVE</button>
+      <button class="btn" onclick="cueEditClose()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DMX Patch Grid inline script ── -->
+<script>
+(function(){
+  var pg_uni    = 0;
+  var pg_patches = [];
+  var DMX_FP    = 7;
+  var COLS      = 32;
+  var ROWS      = 16;
+
+  var FIX_COLORS = [
+    '#000080','#800000','#008000','#800080','#808000','#008080',
+    '#0000c0','#c00000','#00c000','#c000c0','#c0c000','#00c0c0',
+    '#404080','#804040','#408040','#406080'
+  ];
+  function pg_fixColor(id){ return FIX_COLORS[(id-1)%FIX_COLORS.length]; }
+
+  function pg_load(){
+    fetch('/api/artnet/patch').then(function(r){return r.json();}).then(function(d){
+      pg_patches = Array.isArray(d)?d:[];
+      pg_buildTabs(); pg_render();
+    }).catch(function(){});
+  }
+
+  function pg_buildTabs(){
+    var unis=[0];
+    pg_patches.forEach(function(p){if(unis.indexOf(p.universe)<0)unis.push(p.universe);});
+    unis.sort(function(a,b){return a-b;});
+    var c=document.getElementById('pg_uniTabs'); if(!c)return;
+    c.innerHTML='';
+    unis.forEach(function(u){
+      var b=document.createElement('button');
+      b.className='net-btn'+(u===pg_uni?' active':'');
+      b.textContent='Uni '+u;
+      b.onclick=function(){pg_uni=u;pg_buildTabs();pg_render();};
+      c.appendChild(b);
+    });
+    var next=unis[unis.length-1]+1;
+    var ab=document.createElement('button');
+    ab.className='net-btn'; ab.textContent='+ Uni '+next;
+    ab.onclick=function(){pg_uni=next;pg_buildTabs();pg_render();};
+    c.appendChild(ab);
+  }
+
+  function pg_render(){
+    var grid=document.getElementById('pg_grid'); if(!grid)return;
+    var occ={};
+    pg_patches.filter(function(p){return p.universe===pg_uni;}).forEach(function(p){
+      for(var i=0;i<DMX_FP;i++){var a=p.startAddr+i;if(a>=1&&a<=512)occ[a]={fixID:p.fixID,isStart:i===0};}
+    });
+    grid.innerHTML='';
+    for(var row=0;row<ROWS;row++){
+      var rd=document.createElement('div'); rd.className='pg-row';
+      for(var col=0;col<COLS;col++){
+        var addr=row*COLS+col+1;
+        var cell=document.createElement('div'); cell.className='pg-cell';
+        var o=occ[addr];
+        if(o){
+          var col2=pg_fixColor(o.fixID);
+          cell.style.background=col2; cell.style.color='#fff';
+          if(o.isStart){cell.textContent=o.fixID<=99?('F'+o.fixID):'F?';}
+          cell.title='Fix#'+o.fixID+' ch'+addr+(o.isStart?' [start]':'')+' — click to remove';
+          (function(fid){
+            cell.onclick=function(){
+              fetch('/api/artnet/patch/'+fid,{method:'DELETE'}).then(function(){pg_load();});
+              if(typeof toast==='function')toast('Removed patch Fix#'+fid);
+            };
+          })(o.fixID);
+        } else {
+          cell.title='ch'+addr+' (empty) — click to patch Fix#';
+          (function(a2){
+            cell.onclick=function(){
+              var fid=parseInt(document.getElementById('pg_fixSel').value)||0;
+              if(fid<=0){if(typeof toast==='function')toast('Enter Fix# first','err');return;}
+              fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({fixID:fid,universe:pg_uni,startAddr:a2})
+              }).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){
+                if(res.ok){if(typeof toast==='function')toast('Fix#'+fid+' → Uni'+pg_uni+' ch'+a2);pg_load();}
+                else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Conflict','err');}
+              });
+            };
+          })(addr);
+        }
+        rd.appendChild(cell);
+      }
+      grid.appendChild(rd);
+    }
+    var info=document.getElementById('pg_info');
+    if(info){var up=pg_patches.filter(function(p){return p.universe===pg_uni;});info.textContent=up.length+' fix • '+(up.length*DMX_FP)+'/512 ch';}
+  }
+
+  window.pg_clearAll=function(){
+    var fids=pg_patches.filter(function(p){return p.universe===pg_uni;}).map(function(p){return p.fixID;});
+    if(!fids.length){if(typeof toast==='function')toast('Uni '+pg_uni+' already empty');return;}
+    var pending=fids.length;
+    fids.forEach(function(fid){fetch('/api/artnet/patch/'+fid,{method:'DELETE'}).then(function(){if(--pending===0)pg_load();});});
+    if(typeof toast==='function')toast('Clearing '+fids.length+' patch(es) from Uni '+pg_uni);
+  };
+
+  window.pg_reload=pg_load;
+  pg_load();
+  setInterval(pg_load,5000);
+})();
+</script>
+
+<!-- ── Network Heads inline script ── -->
+<script>
+(function(){
+  var headsData             = [];
+  var fixturePool           = [];
+  var selectedMACs          = [];
+  var selectedOfflineFixIDs = [];
+  var identTimers           = {};
+  var patchMode             = false;
+  var patchNextID           = 1;
+  var anPatches             = [];
+  var patchAcks             = {};
+  var nameAcks              = {};
+  var nhEditMode            = false;
+
+  nh_load();
+  setInterval(function(){ if(!nhEditMode) nh_load(); }, 2000);
+
+  window.nh_startEdit = function() {
+    nhEditMode = true;
+    document.getElementById('nh_editBtn').style.display = 'none';
+    document.getElementById('nh_saveBtn').style.display = '';
+    if(typeof toast==='function') toast('Edit mode — refresh paused');
+  };
+  window.nh_stopEdit = function() {
+    nhEditMode = false;
+    document.getElementById('nh_editBtn').style.display = '';
+    document.getElementById('nh_saveBtn').style.display = 'none';
+    nh_load();
+    if(typeof toast==='function') toast('Saved — refresh resumed');
+  };
+
+  function nh_load() {
+    if(nhEditMode) return;
+    Promise.all([
+      fetch('/api/heads').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/fixtures').then(function(r){return r.json();}).catch(function(){return[];}),
+      fetch('/api/artnet/patch').then(function(r){return r.json();}).catch(function(){return[];})
+    ]).then(function(res){
+      headsData   = Array.isArray(res[0]) ? res[0] : [];
+      fixturePool = Array.isArray(res[1]) ? res[1] : [];
+      anPatches   = Array.isArray(res[2]) ? res[2] : [];
+      var now=Date.now()/1000;
+      Object.keys(patchAcks).forEach(function(k){var a=patchAcks[k];if(a.status==='ok'&&a.ts&&now-a.ts>20)delete patchAcks[k];});
+      Object.keys(nameAcks).forEach(function(k){var a=nameAcks[k];if(a.status==='ok'&&a.ts&&now-a.ts>20)delete nameAcks[k];});
+      nh_render();
+    }).catch(function(){});
+  }
+
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  window.nh_togglePatchMode = function() {
+    patchMode = !patchMode;
+    var bar=document.getElementById('nh_patchBar'),btn=document.getElementById('nh_patchToggle'),wrap=document.getElementById('nh_tableWrap');
+    if(patchMode){
+      bar.classList.add('visible');btn.classList.add('active');wrap.classList.add('patch-mode-active');
+      var used=headsData.map(function(h){return h.fixID;}).filter(function(id){return id>0;});
+      var start=1;while(used.indexOf(start)>=0)start++;
+      document.getElementById('nh_patchStart').value=start;patchNextID=start;nh_updatePatchLabel();
+      if(typeof toast==='function')toast('Patch mode — click a head to assign Fix#');
+    } else {
+      bar.classList.remove('visible');btn.classList.remove('active');wrap.classList.remove('patch-mode-active');
+    }
+    nh_render();
+  };
+
+  window.nh_onStartChange = function() {
+    var v=parseInt(document.getElementById('nh_patchStart').value)||1;
+    patchNextID=Math.max(1,v);nh_updatePatchLabel();
+  };
+  window.nh_resetPatchCounter = function() {
+    var v=parseInt(document.getElementById('nh_patchStart').value)||1;
+    patchNextID=Math.max(1,v);nh_updatePatchLabel();
+    if(typeof toast==='function')toast('Counter reset to Fix#'+patchNextID);
+  };
+
+  window.nh_patchDone = function() {
+    var sorted=headsData.slice().sort(function(a,b){
+      if(a.role==='LEADER'&&b.role!=='LEADER')return -1;
+      if(b.role==='LEADER'&&a.role!=='LEADER')return 1;
+      if(a.fixID>0&&b.fixID>0)return a.fixID-b.fixID;
+      if(a.fixID>0)return -1;if(b.fixID>0)return 1;
+      return a.mac.localeCompare(b.mac);
+    }).filter(function(h){return selectedMACs.indexOf(h.mac)>=0;});
+    if(!sorted.length){nh_togglePatchMode();return;}
+    var startId=patchNextID,pending=sorted.length;
+    sorted.forEach(function(h,i){
+      var id=startId+i,name=h.name||('Fix #'+id);
+      fetch('/api/heads/'+h.mac+'/fixid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:id})}).then(function(){
+        h.fixID=id;
+        fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,name:name,mac:h.mac})}).catch(function(){
+          fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:h.mac})});
+        });
+        if(--pending===0){patchNextID=startId+sorted.length;nh_updatePatchLabel();nh_togglePatchMode();nh_load();if(typeof toast==='function')toast('Patched '+sorted.length+' head(s): Fix#'+startId+'–Fix#'+(startId+sorted.length-1));}
+      });
+    });
+  };
+
+  function nh_updatePatchLabel() {
+    var el=document.getElementById('nh_patchNextLabel');if(el)el.textContent=patchNextID;
+    var sel=document.getElementById('nh_patchSelCount');
+    if(sel){var n=selectedMACs.length;sel.textContent=n?'('+n+' selected → Fix#'+patchNextID+'–Fix#'+(patchNextID+n-1)+')':'';}
+  }
+
+  window.nh_patchAssign = function(mac) {
+    var id=patchNextID;
+    fetch('/api/heads/'+mac+'/fixid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:id})}).then(function(){
+      headsData.forEach(function(h){if(h.mac===mac)h.fixID=id;});
+      var name=(headsData.find(function(h){return h.mac===mac;})||{}).name||('Fix #'+id);
+      fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,name:name,mac:mac})}).catch(function(){
+        fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:mac})});
+      });
+      patchNextID++;nh_updatePatchLabel();nh_render();
+      var row=document.querySelector('tr[data-mac="'+mac+'"]');
+      if(row){row.classList.add('patch-patched-flash');setTimeout(function(){row.classList.remove('patch-patched-flash');},500);}
+      if(typeof toast==='function')toast('Fix#'+id+' → '+mac.slice(-8)+' — next: Fix#'+patchNextID);
+    });
+  };
+
+  function nh_render() {
+    var tbody=document.getElementById('nh_tbody');
+    if(!tbody)return;
+    tbody.innerHTML='';
+
+    if(!headsData||!headsData.length){
+      var empty=document.createElement('tr');
+      empty.innerHTML='<td colspan="11" style="color:var(--text-dim);text-align:center;padding:20px 0;">No heads found</td>';
+      tbody.appendChild(empty);
+    } else {
+      var fixCount={};
+      headsData.forEach(function(h){if(h.fixID>0)fixCount[h.fixID]=(fixCount[h.fixID]||0)+1;});
+      headsData.sort(function(a,b){
+        if(a.role==='LEADER'&&b.role!=='LEADER')return -1;
+        if(b.role==='LEADER'&&a.role!=='LEADER')return 1;
+        if(a.fixID>0&&b.fixID>0)return a.fixID-b.fixID;
+        if(a.fixID>0)return -1;if(b.fixID>0)return 1;
+        return a.mac.localeCompare(b.mac);
+      });
+      headsData.forEach(function(h){
+        var sel=selectedMACs.indexOf(h.mac)>=0,dup=h.fixID>0&&fixCount[h.fixID]>1;
+        var modeClass=h.mode==='ARTNET'?'artnet':(h.mode==='PC'?'pc':'udp');
+        var tr=document.createElement('tr');
+        tr.dataset.mac=h.mac;if(sel)tr.className='selected-head';
+        var anPatch=(h.fixID>0)?anPatches.find(function(p){return p.fixID===h.fixID;}):null;
+        var patchAckSt=patchAcks[h.fixID],patchIcon=nh_ackIcon(patchAckSt);
+        var nameAckSt=nameAcks[h.mac],nameIcon=nh_ackIcon(nameAckSt);
+        var patchCells;
+        if(h.fixID>0&&anPatch){
+          patchCells='<td><input type="number" style="width:38px;background:#fff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000;padding:2px 4px;font-size:11px;border-radius:0;text-align:center;-moz-appearance:textfield;" value="'+anPatch.universe+'" min="0" max="32767" onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;background:#fff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000080;padding:2px 4px;font-size:11px;border-radius:0;text-align:center;-moz-appearance:textfield;" value="'+anPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
+            '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid #808080;border-top-color:#fff;border-left-color:#fff;box-shadow:inset 1px 1px 0 #dfdfdf;background:#c0c0c0;color:#800000;font-weight:bold;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+h.fixID+')">&#10005;</button>'+patchIcon+'</td>';
+        } else if(h.fixID>0){
+          patchCells='<td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td><td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
+        } else {
+          patchCells='<td style="color:var(--text-dim);text-align:center;">—</td><td style="color:var(--text-dim);text-align:center;">—</td><td></td>';
+        }
+        var modeBadge=h.mode?'<span class="mode-badge '+modeClass+'">'+h.mode+'</span>':'';
+        tr.innerHTML=
+          '<td><input type="checkbox"'+(sel?' checked':'')+' onchange="nh_toggleSel(\''+h.mac+'\',this.checked)"></td>'+
+          '<td><input class="fix-id-input'+(dup?' duplicate':'')+'" type="number" min="1" max="999" value="'+(h.fixID>0?h.fixID:'')+'" placeholder="-"'+(dup?' title="Duplicate FixID"':'')+' onchange="nh_setFixID(\''+h.mac+'\',this.value)">'+(dup?'<span class="dup-warn">DUP</span>':'')+
+          '</td>'+
+          '<td style="white-space:nowrap;"><input class="name-input" type="text" value="'+esc(h.name||'')+'" placeholder="Name..." onchange="nh_setName(\''+h.mac+'\',this.value)">'+nameIcon+'</td>'+
+          '<td style="color:var(--text-dim);" title="'+h.mac+'">&#8230;'+h.mac.slice(-8)+'</td>'+
+          '<td>'+h.ip+'</td>'+
+          '<td><span class="role-badge '+(h.role==='LEADER'?'leader':'follower')+'">'+h.role+'</span>'+modeBadge+'</td>'+
+          patchCells+
+          '<td class="identify-col"><button class="identify-btn" data-mac="'+h.mac+'"'+
+            ' onmousedown="nh_identStart(\''+h.mac+'\')" onmouseup="nh_identStop(\''+h.mac+'\')"'+
+            ' onmouseleave="nh_identStop(\''+h.mac+'\')" ontouchstart="nh_identStart(\''+h.mac+'\')"'+
+            ' ontouchend="nh_identStop(\''+h.mac+'\')">HOLD</button></td>'+
+          '<td><button class="patch-assign-btn" onclick="nh_patchAssign(\''+h.mac+'\')">&#8594; Fix#'+patchNextID+'</button></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Offline fixtures
+    var onlineFixIDs=headsData.map(function(h){return h.fixID;});
+    var onlineMACs=headsData.map(function(h){return h.mac;});
+    var offline=fixturePool.filter(function(f){
+      if(f.mac&&onlineMACs.indexOf(f.mac)>=0)return false;
+      if(f.id>0&&onlineFixIDs.indexOf(f.id)>=0)return false;
+      return true;
+    });
+    if(offline.length>0){
+      var sep=document.createElement('tr');
+      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;padding:5px 0;border-top:1px solid #808080;">── OFFLINE ──</td>';
+      tbody.appendChild(sep);
+      offline.forEach(function(f){
+        var sel=selectedOfflineFixIDs.indexOf(f.id)>=0;
+        var tr=document.createElement('tr');tr.style.opacity='0.6';
+        var offPatch=(f.id>0)?anPatches.find(function(p){return p.fixID===f.id;}):null;
+        var offPatchIcon=nh_ackIcon(patchAcks[f.id]);
+        var offPatchCells;
+        if(offPatch){
+          offPatchCells='<td><input type="number" style="width:38px;" value="'+offPatch.universe+'" min="0" max="32767" onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
+            '<td><input type="number" style="width:38px;" value="'+offPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
+            '<td><button style="width:22px;height:22px;border:1px solid #808080;background:#c0c0c0;color:#800000;font-weight:bold;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
+        } else if(f.id>0){
+          offPatchCells='<td style="text-align:center;color:var(--text-dim);">—</td><td style="text-align:center;color:var(--text-dim);">—</td>'+
+            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
+        } else {
+          offPatchCells='<td>—</td><td>—</td><td></td>';
+        }
+        tr.innerHTML=
+          '<td><input type="checkbox"'+(sel?' checked':'')+' onchange="nh_toggleOffline('+f.id+',this.checked)"></td>'+
+          '<td><span style="font-family:var(--mono);font-size:11px;">'+(f.id>0?f.id:'—')+'</span></td>'+
+          '<td><input class="name-input" type="text" value="'+esc(f.name||'')+'" placeholder="Name..." onchange="nh_renameFixture('+f.id+',this.value)"></td>'+
+          '<td style="color:var(--text-dim);">'+(f.mac?('&#8230;'+f.mac.slice(-8)):'—')+'</td>'+
+          '<td>—</td><td><span class="role-badge">OFFLINE</span></td>'+
+          offPatchCells+
+          '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" style="color:#800000;border-color:#800000;">&#10005;</button></td><td></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Add row
+    var addRow=document.createElement('tr');
+    addRow.innerHTML=
+      '<td></td>'+
+      '<td><input type="number" id="nh_newId" min="1" max="999" placeholder="ID" class="add-input" style="width:38px;text-align:center;"></td>'+
+      '<td><input type="text" id="nh_newName" placeholder="Name..." class="add-input" style="width:78px;"></td>'+
+      '<td><input type="text" id="nh_newMac" placeholder="MAC (opt)" class="add-input" style="width:88px;font-size:10px;color:var(--text-dim);"></td>'+
+      '<td colspan="5"></td>'+
+      '<td class="identify-col"><button class="identify-btn" onclick="nh_addFixture()" style="color:#008000;border-color:#008000;">+</button></td>'+
+      '<td></td>';
+    tbody.appendChild(addRow);
+
+    if(patchMode){tbody.querySelectorAll('.patch-assign-btn').forEach(function(btn){btn.textContent='→ Fix#'+patchNextID;});}
+    nh_updateSelInfo();nh_updatePatchLabel();
+  }
+
+  window.nh_toggleSel=function(mac,checked){if(checked){if(selectedMACs.indexOf(mac)<0)selectedMACs.push(mac);}else{selectedMACs=selectedMACs.filter(function(m){return m!==mac;});}nh_render();};
+  window.nh_toggleOffline=function(fixId,checked){if(checked){if(selectedOfflineFixIDs.indexOf(fixId)<0)selectedOfflineFixIDs.push(fixId);}else{selectedOfflineFixIDs=selectedOfflineFixIDs.filter(function(i){return i!==fixId;});}nh_render();};
+  window.nh_selectAll=function(){selectedMACs=headsData.map(function(h){return h.mac;});var onFix=headsData.map(function(h){return h.fixID;});var onMac=headsData.map(function(h){return h.mac;});selectedOfflineFixIDs=fixturePool.filter(function(f){return!(f.mac&&onMac.indexOf(f.mac)>=0)&&!(f.id>0&&onFix.indexOf(f.id)>=0);}).map(function(f){return f.id;});nh_render();};
+  window.nh_clearSel=function(){selectedMACs=[];selectedOfflineFixIDs=[];nh_render();};
+
+  window.nh_selectNoFix=function(){selectedMACs=headsData.filter(function(h){return!(h.fixID>0);}).map(function(h){return h.mac;});selectedOfflineFixIDs=[];nh_render();if(typeof toast==='function')toast(selectedMACs.length+' head(s) without Fix#');};
+  window.nh_selectNoDmx=function(){fetch('/api/artnet/patch').then(function(r){return r.json();}).then(function(patches){var ids=patches.map(function(p){return p.fixID;});selectedMACs=headsData.filter(function(h){return!(h.fixID>0)||ids.indexOf(h.fixID)<0;}).map(function(h){return h.mac;});selectedOfflineFixIDs=[];nh_render();if(typeof toast==='function')toast(selectedMACs.length+' head(s) without DMX patch');}).catch(function(){if(typeof toast==='function')toast('Could not fetch Art-Net patches','err');});};
+  window.nh_clearFixIDs=function(){var targets=selectedMACs.slice();if(!targets.length){if(typeof toast==='function')toast('No heads selected','err');return;}var pending=targets.length;targets.forEach(function(mac){fetch('/api/heads/'+mac+'/fixid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:0})}).then(function(){headsData.forEach(function(h){if(h.mac===mac)h.fixID=0;});if(--pending===0){if(typeof toast==='function')toast('Cleared Fix IDs on '+targets.length+' head(s)');nh_load();}});});};
+
+  function nh_updateSelInfo(){var el=document.getElementById('nh_selInfo');var labels=selectedMACs.map(function(mac){var h=headsData.find(function(x){return x.mac===mac;});return(h&&h.fixID>0)?'Fix#'+h.fixID:'…'+mac.slice(-5);});selectedOfflineFixIDs.forEach(function(id){labels.push('Fix#'+id+'(off)');});el.textContent=labels.length?labels.join(', '):'No heads selected';}
+
+  window.nh_setFixID=function(mac,val){var id=parseInt(val)||0;fetch('/api/heads/'+mac+'/fixid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:id})}).then(function(){headsData.forEach(function(h){if(h.mac===mac)h.fixID=id;});nh_render();if(typeof toast==='function')toast('Fix#'+id+' saved');});};
+  window.nh_setName=function(mac,name){var isOnline=headsData.some(function(h){return h.mac===mac;});if(isOnline){nameAcks[mac]={status:'pending',ts:Date.now()/1000};nh_render();}fetch('/api/heads/'+mac+'/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(){headsData.forEach(function(h){if(h.mac===mac)h.name=name;});if(typeof toast==='function')toast(isOnline?'Name sent':'Name saved');});};
+
+  window.nh_renameFixture=function(id,name){fetch('/api/fixtures/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(){fixturePool.forEach(function(f){if(f.id===id)f.name=name;});if(typeof toast==='function')toast('Fixture renamed');});};
+  window.nh_addFixture=function(){var idEl=document.getElementById('nh_newId'),nameEl=document.getElementById('nh_newName'),macEl=document.getElementById('nh_newMac');var id=parseInt(idEl.value)||0;if(id<=0){if(typeof toast==='function')toast('Enter a valid Fix# ID','err');return;}fetch('/api/fixtures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,name:nameEl.value.trim(),mac:macEl.value.trim()||null})}).then(function(r){return r.json();}).then(function(d){if(d.status==='ok'){idEl.value='';nameEl.value='';macEl.value='';if(typeof toast==='function')toast('Fixture #'+id+' added');nh_load();}});};
+  window.nh_deleteFixture=function(id){fetch('/api/fixtures/'+id,{method:'DELETE'}).then(function(){fixturePool=fixturePool.filter(function(f){return f.id!==id;});selectedOfflineFixIDs=selectedOfflineFixIDs.filter(function(i){return i!==id;});nh_render();if(typeof toast==='function')toast('Fixture removed');});};
+
+  window.nh_sendLive=function(){if(!selectedMACs.length){if(typeof toast==='function')toast('Select heads first','err');return;}var v=(typeof getValues==='function')?getValues():null;if(!v){if(typeof toast==='function')toast('Faders not ready','err');return;}var cmd='R:'+v.r+',G:'+v.g+',B:'+v.b+',W:'+v.w+',PAN:'+v.pan+',TILT:'+v.tilt;fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd,targets:selectedMACs.slice()})});if(typeof toast==='function')toast('Sent to '+selectedMACs.length+' head(s)');};
+  window.nh_addToCue=function(){if(!selectedMACs.length&&!selectedOfflineFixIDs.length){if(typeof toast==='function')toast('Select heads first','err');return;}var nameEl=document.getElementById('cueName');var name=nameEl?nameEl.value.trim():'';if(!name){if(typeof toast==='function')toast('Enter cue name first','err');return;}var v=(typeof getValues==='function')?getValues():{r:0,g:0,b:0,w:0,pan:90,tilt:45};var fixIds=selectedMACs.map(function(mac){var h=headsData.find(function(x){return x.mac===mac;});return h?h.fixID:0;}).filter(function(id){return id>0;});fixIds=fixIds.concat(selectedOfflineFixIDs.filter(function(id){return fixIds.indexOf(id)<0;}));if(!fixIds.length)fixIds=[0];fetch('/api/cues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,r:v.r,g:v.g,b:v.b,w:v.w,pan:v.pan,tilt:v.tilt,fixTargets:fixIds})}).then(function(){if(nameEl)nameEl.value='';var tStr=fixIds.map(function(id){return id===0?'ALL':'Fix#'+id;}).join(', ');if(typeof toast==='function')toast('Cue saved → '+tStr);if(typeof loadCues==='function')loadCues();});};
+
+  window.nh_identStart=function(mac){if(identTimers[mac])return;nh_identSend(mac,true);identTimers[mac]=setInterval(function(){nh_identSend(mac,true);},500);var btn=document.querySelector('.identify-btn[data-mac="'+mac+'"]');if(btn)btn.classList.add('holding');};
+  window.nh_identStop=function(mac){if(!identTimers[mac])return;clearInterval(identTimers[mac]);delete identTimers[mac];nh_identSend(mac,false);var btn=document.querySelector('.identify-btn[data-mac="'+mac+'"]');if(btn)btn.classList.remove('holding');};
+  function nh_identSend(mac,on){fetch('/api/heads/'+mac+'/identify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:on})});}
+
+  window.nh_getSelectedMACs=function(){return selectedMACs.slice();};
+  window.nh_getSelectedFixIDs=function(){var online=selectedMACs.map(function(mac){var h=headsData.find(function(x){return x.mac===mac;});return h?h.fixID:0;}).filter(function(id){return id>0;});return online.concat(selectedOfflineFixIDs.filter(function(id){return online.indexOf(id)<0;}));};
+
+  function nh_ackIcon(ack){if(!ack)return '';var age=Date.now()/1000-(ack.ts||0);if(ack.status==='pending')return '<span style="color:var(--accent2);font-size:12px;margin-left:3px;" title="Waiting…">&#8635;</span>';if(ack.status==='ok'&&age<20)return '<span style="color:#008000;font-size:12px;margin-left:3px;" title="Confirmed">&#10003;</span>';if(ack.status==='timeout')return '<span style="color:#800000;font-size:12px;margin-left:3px;" title="No response">&#10007;</span>';return '';}
+
+  window.nh_patchUpdate=function(fixID,uni,addr){var p=anPatches.find(function(x){return x.fixID===fixID;});if(!p)return;var isOnline=headsData.some(function(h){return h.fixID===fixID;});var data={universe:uni!==null?uni:p.universe,startAddr:addr!==null?addr:p.startAddr};fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){if(res.ok){p.universe=data.universe;p.startAddr=data.startAddr;if(isOnline){patchAcks[fixID]={status:'pending',ts:Date.now()/1000};nh_render();}if(typeof toast==='function')toast(isOnline?'Patch sent — waiting for ESP…':'Patch saved (ESP offline)');}else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Patch conflict','err');nh_load();}});};
+  window.nh_patchDel=function(fixID){fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){anPatches=anPatches.filter(function(p){return p.fixID!==fixID;});delete patchAcks[fixID];nh_render();if(typeof toast==='function')toast('Patch removed');});};
+  window.nh_patchCreate=function(fixID){var DMX_FP=7,used=anPatches.filter(function(p){return p.universe===0;}),addr=1;used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){if(p.startAddr<=addr&&addr<p.startAddr+DMX_FP)addr=p.startAddr+DMX_FP;});if(addr+DMX_FP-1>512){if(typeof toast==='function')toast('Universe 0 full','err');return;}var isOnline2=headsData.some(function(h){return h.fixID===fixID;});fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:fixID,universe:0,startAddr:addr})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){if(res.ok){anPatches.push({fixID:fixID,universe:0,startAddr:addr});if(isOnline2)patchAcks[fixID]={status:'pending',ts:Date.now()/1000};nh_render();if(typeof toast==='function')toast(isOnline2?'Patched Fix#'+fixID+' → Uni 0 Addr '+addr:'Patch saved (ESP offline)');}else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Patch conflict','err');}});};
+
+})();
+</script>
+
+<script src="js/app.js"></script>
+</body>
+</html>

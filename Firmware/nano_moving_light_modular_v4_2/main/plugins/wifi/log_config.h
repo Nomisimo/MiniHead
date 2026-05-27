@@ -11,7 +11,7 @@ struct LogConfig {
   bool artnetEvents     = true;   // ArtNet active / timeout / patch changed
   bool discoveryBeacons = false;  // every beacon heard (spammy)
   bool discoveryEvents  = true;   // role change, leader found/lost
-  bool udpVerbose       = false;  // all UDP commands received / identify events
+  bool udpVerbose       = true;   // all UDP commands received / identify events
 };
 
 LogConfig logCfg;

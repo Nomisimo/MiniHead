@@ -1,0 +1,718 @@
+/* ── Theme: Windows 98 ─────────────────────────────────────────── */
+/* To activate: copy this file to css/theme.css                     */
+
+:root {
+  --bg:#c0c0c0; --surface:#c0c0c0; --surface2:#c0c0c0;
+  --border:#808080; --accent:#000080; --accent2:#800040;
+  --accent3:#800080; --text:#000000; --text-dim:#404040;
+  --success:#008000; --danger:#800000;
+  --mono:"Courier New",monospace; --sans:Tahoma,"MS Sans Serif",Arial,sans-serif;
+}
+
+body {
+  background: #c0c0c0;
+  color: #000000;
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+}
+
+body::before { display: none; }
+
+/* ── Title bar ── */
+header {
+  padding: 3px 6px 3px 4px;
+  background: linear-gradient(to right, #000080 0%, #1084d0 100%);
+  border-bottom: 1px solid #000000;
+}
+
+.logo {
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.logo span { color: #a0c0ff; }
+
+.connection-bar {
+  gap: 6px;
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  color: #ffffff;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: #00ff00;
+  box-shadow: none;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  border-bottom-color: #dfdfdf;
+  border-right-color: #dfdfdf;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+.ip-label { color: #ffffff; font-weight: bold; }
+
+/* ── Main grid ── */
+.main { gap: 0; background: #c0c0c0; }
+
+@media(min-width:900px) {
+  .col-right { border-left: 1px solid #808080; }
+}
+
+/* ── Panel = Win98 group area ── */
+.panel {
+  background: #c0c0c0;
+  padding: 14px 16px 16px;
+  border-bottom: 1px solid #808080;
+}
+
+.panel:last-child { border-bottom: none; }
+
+/* Panel title — PC App has no <hr> after it, so add a separator below */
+.panel-title {
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  color: #000000;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #808080;
+  border-bottom-width: 1px;
+  box-shadow: 0 1px 0 #ffffff;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #808080;
+  border-bottom: 1px solid #ffffff;
+  margin: 0 0 12px;
+}
+
+/* ── Win98 raised buttons ── */
+.btn {
+  padding: 4px 12px;
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: normal;
+  color: #000000;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 0;
+  touch-action: manipulation;
+  min-width: 70px;
+  text-align: center;
+  transition: none;
+}
+
+.btn:active {
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+  padding: 5px 11px 3px 13px;
+}
+
+.btn:hover { background: #c0c0c0; }
+
+.btn.primary {
+  font-weight: bold;
+  outline: 1px solid #000000;
+  outline-offset: -3px;
+}
+
+.btn.danger  { color: #800000; font-weight: bold; }
+.btn.success { color: #008000; font-weight: bold; }
+
+.btn.active {
+  background: #000080;
+  color: #ffffff;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #000040;
+}
+
+/* ── Faders ── */
+.faders-row { gap: 8px; }
+.fader-group { gap: 6px; }
+.fader-label {
+  font-family: Tahoma, sans-serif;
+  font-size: 10px;
+  font-weight: bold;
+  color: #000000;
+  letter-spacing: 0;
+}
+
+input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+
+input[type=range].vertical::-webkit-slider-runnable-track {
+  background: #ffffff;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  border-bottom-color: #dfdfdf;
+  border-right-color: #dfdfdf;
+  width: 8px;
+}
+
+input[type=range].vertical::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 14px;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  border-radius: 0;
+}
+
+.fader-r input[type=number] { color: #800000; }
+.fader-g input[type=number] { color: #008000; }
+.fader-b input[type=number] { color: #000080; }
+.fader-w input[type=number] { color: #404040; }
+
+/* ── Number inputs (sunken) ── */
+input[type=number] {
+  width: 44px;
+  background: #ffffff;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  color: #000000;
+  padding: 2px 2px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  outline: none;
+  text-align: center;
+  transition: none;
+}
+
+.preview-row { margin-top: 12px; }
+
+.led-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 0;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  background: #000;
+  transition: background 0.1s;
+}
+
+/* ── Motion sliders ── */
+.motion-row { gap: 8px; margin-bottom: 10px; }
+.motion-label {
+  font-family: Tahoma, sans-serif;
+  font-size: 10px;
+  font-weight: bold;
+  color: #000000;
+  letter-spacing: 0;
+}
+
+input[type=range].horizontal {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  outline: none;
+}
+
+input[type=range].horizontal::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #ffffff;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  border-bottom-color: #dfdfdf;
+  border-right-color: #dfdfdf;
+}
+
+input[type=range].horizontal::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 22px;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  border-radius: 0;
+  margin-top: -10px;
+}
+
+/* ── Rainbow button ── */
+.rainbow-btn {
+  width: 100%;
+  padding: 6px;
+  font-size: 11px;
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  background: linear-gradient(90deg,#ff000030,#ffff0030,#00ff0030,#00ffff30,#0000ff30,#ff00ff30), #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  color: #000000;
+  cursor: pointer;
+  touch-action: manipulation;
+  border-radius: 0;
+  transition: none;
+  min-width: unset;
+}
+
+.rainbow-btn.active {
+  background: linear-gradient(90deg,#ff0000cc,#ffff00cc,#00ff00cc,#00ffffcc,#0000ffcc,#ff00ffcc);
+  animation: rainbow-shift 2s linear infinite;
+  color: #000000;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+@keyframes rainbow-shift { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(360deg)} }
+
+/* ── Cue list ── */
+.cue-list { gap: 2px; margin-bottom: 8px; }
+
+.cue-list::-webkit-scrollbar { width: 16px; }
+
+.cue-list::-webkit-scrollbar-track {
+  background: repeating-linear-gradient(45deg,#c0c0c0 0px,#c0c0c0 2px,#a8a8a8 2px,#a8a8a8 4px);
+}
+
+.cue-list::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+}
+
+.cue-item {
+  gap: 8px;
+  padding: 3px 6px;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  border-radius: 0;
+  cursor: default;
+  transition: none;
+}
+
+.cue-item.seq-selected {
+  background: #000080;
+  color: #ffffff;
+  border: 1px solid #000080;
+  box-shadow: none;
+}
+
+.cue-item.seq-selected .cue-name,
+.cue-item.seq-selected .cue-meta { color: #ffffff; }
+
+.cue-item.drag-over {
+  border: 1px dashed #000000;
+  background: #a0b0c0;
+  box-shadow: none;
+}
+
+.cue-item.dragging { opacity: 0.4; }
+
+.cue-drag {
+  cursor: grab;
+  color: #404040;
+  font-size: 14px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.cue-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+  flex-shrink: 0;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  border-bottom-color: #dfdfdf;
+  border-right-color: #dfdfdf;
+}
+
+.cue-name { font-size: 11px; font-weight: bold; color: #000000; }
+.cue-meta { font-family: Tahoma, sans-serif; font-size: 10px; color: #404040; margin-top: 1px; }
+.cue-actions { gap: 2px; }
+
+/* ── Icon buttons ── */
+.icon-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  background: #c0c0c0;
+  color: #000000;
+  border-radius: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  touch-action: manipulation;
+}
+
+.icon-btn:hover { color: #000000; }
+
+.icon-btn:active {
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+/* ── Text inputs (sunken) ── */
+.save-cue-form { gap: 6px; }
+
+input[type=text] {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  color: #000000;
+  padding: 3px 6px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  outline: none;
+  transition: none;
+}
+
+input[type=text]:focus {
+  outline: 2px solid #000080;
+  outline-offset: -2px;
+}
+
+/* ── Sequencer ── */
+.seq-controls { gap: 8px; }
+.seq-row { gap: 6px; }
+.seq-label { font-family: Tahoma, sans-serif; font-size: 11px; font-weight: bold; color: #000000; width: 70px; }
+.seq-buttons { gap: 4px; margin-top: 8px; }
+.seq-buttons .btn { padding: 4px 8px; text-align: center; }
+.seq-hint { font-size: 10px; color: #404040; margin-bottom: 8px; }
+
+/* ── Future area ── */
+.area-future { background: #c0c0c0 !important; }
+
+.future-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 80px;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  background: #ffffff;
+  color: #404040;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.serial-row { gap: 6px; }
+
+/* ── Modal = Win98 dialog ── */
+#cueEditModal { background: rgba(0,0,0,0.35); }
+
+.modal-box {
+  background: #c0c0c0;
+  border: 2px solid #000000;
+  border-radius: 0;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 #000000, inset 1px 1px 0 #dfdfdf;
+}
+
+.modal-title {
+  background: linear-gradient(to right, #000080 0%, #1084d0 100%);
+  color: #ffffff;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0;
+  text-transform: none;
+  margin: 0 0 12px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #000000;
+}
+
+#cueEditList { padding: 0 16px; }
+
+.modal-check-row {
+  gap: 6px;
+  margin-bottom: 6px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  color: #000000;
+}
+
+.modal-check-row input {
+  accent-color: #000080;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.modal-footer { gap: 6px; margin-top: 10px; padding: 0 16px 16px; }
+
+/* ── Toast ── */
+#toast {
+  padding: 6px 14px;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040, 2px 2px 0 #000000;
+  color: #000000;
+  transition: opacity 0.2s;
+}
+
+#toast.ok  { color: #008000; font-weight: bold; }
+#toast.err { color: #800000; font-weight: bold; }
+@media(min-width:900px) { #toast { left: auto; width: auto; } }
+
+/* ── Art-Net bar ── */
+#artnet-bar {
+  gap: 8px;
+  padding: 3px 10px;
+  background: linear-gradient(to right, #000080, #1084d0);
+  border-bottom: 1px solid #000000;
+  font-family: Tahoma, sans-serif;
+  font-size: 10px;
+  color: #ffffff;
+  letter-spacing: 0;
+}
+
+#artnet-bar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: #00ff00;
+  box-shadow: none;
+  border: 1px solid #404040;
+  border-bottom-color: #dfdfdf;
+  border-right-color: #dfdfdf;
+  animation: pulse 1s infinite;
+  flex-shrink: 0;
+}
+
+#artnet-live { color: #ffffff; font-size: 10px; opacity: 1; }
+#artnet-bar-count { color: #a0c0ff; margin-left: auto; white-space: nowrap; }
+
+/* ── Discovery panel overrides ── */
+
+/* Reuse panel-title styling for discovery's own title class */
+.panel-title-network {
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  color: #000000;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #808080;
+  box-shadow: 0 1px 0 #ffffff;
+}
+
+/* Net-buttons (discovery panel) — same Win98 raised style */
+.net-btn {
+  padding: 3px 10px;
+  font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  color: #000000;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 0;
+  touch-action: manipulation;
+  transition: none;
+}
+
+.net-btn:active {
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+.net-btn.primary { color: #000080; font-weight: bold; outline: 1px solid #000000; outline-offset: -3px; }
+.net-btn.purple  { color: #800080; font-weight: bold; }
+
+/* Heads table */
+.heads-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+}
+
+.heads-table th {
+  text-align: left;
+  color: #000000;
+  font-weight: bold;
+  padding: 3px 6px;
+  background: #c0c0c0;
+  border-bottom: 1px solid #808080;
+  letter-spacing: 0;
+}
+
+.heads-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #808080 !important;
+  vertical-align: middle;
+  color: #000000;
+}
+
+.heads-table tr:last-child td { border-bottom: none !important; }
+
+.heads-table tr.selected-head td { background: #000080 !important; color: #ffffff; }
+
+/* Role badges — Win98 flat text */
+.role-badge {
+  padding: 1px 5px;
+  border-radius: 0;
+  font-size: 9px;
+  letter-spacing: 0;
+  font-weight: bold;
+  border: 1px solid #808080;
+}
+
+.role-badge.leader   { background: #000080; color: #ffffff; border-color: #000080; }
+.role-badge.follower { background: #c0c0c0; color: #404040; }
+
+/* Identify button — Win98 small button */
+.identify-btn {
+  padding: 2px 8px;
+  font-family: Tahoma, sans-serif;
+  font-size: 10px;
+  color: #000000;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #404040;
+  cursor: pointer;
+  border-radius: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  letter-spacing: 0;
+  transition: none;
+}
+
+.identify-btn.holding {
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+  background: #000080;
+  color: #ffffff;
+}
+
+/* Small inline inputs in discovery table */
+.fix-id-input {
+  width: 40px;
+  background: #ffffff;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  color: #000000;
+  padding: 1px 4px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  text-align: center;
+  -moz-appearance: textfield;
+  outline: none;
+}
+
+.fix-id-input::-webkit-outer-spin-button,
+.fix-id-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.fix-id-input.duplicate {
+  border-color: #800000 !important;
+  color: #800000 !important;
+}
+
+.name-input {
+  width: 80px;
+  background: #ffffff;
+  border: 1px solid #dfdfdf;
+  border-top-color: #808080;
+  border-left-color: #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  color: #000000;
+  padding: 1px 6px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  outline: none;
+}
+
+.add-input {
+  background: #ffffff;
+  border: 1px solid #808080;
+  border-top-color: #404040;
+  border-left-color: #404040;
+  box-shadow: inset 1px 1px 0 #404040;
+  color: #000000;
+  padding: 2px 5px;
+  font-family: Tahoma, sans-serif;
+  font-size: 11px;
+  border-radius: 0;
+  outline: none;
+}
+
+.dup-warn { color: #800000; font-size: 9px; font-weight: bold; margin-left: 2px; }

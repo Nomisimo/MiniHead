@@ -1,18 +1,20 @@
 #pragma once
 
 // ── WiFi Plugin ───────────────────────────────────────────────────
-// Enables the full WiFi subsystem:
-//   • UDP beacon discovery + leader election     (discovery.h)
-//   • HTTP control server (runs on leader only)  (wifi_control.h)
-//   • UDP command receiver/sender on every node  (udp_control.h)
+// Core HTTP server: cue sequencer, fader control, CORS, log config.
+// Shared types (NodeRole, Peer, ports) in discovery_globals.h.
 //
-// To disable the entire wifi subsystem, comment out:
-//   #include "plugins/wifi/wifi.h"   in config.h
-//
-// Include order below is critical — do not reorder.
+// Additional plugins (add after this in config.h):
+//   plugins/udp_control/udp_control.h  — discovery + leader election + UDP
+//   plugins/artnet/artnet.h            — Art-Net DMX receiver + patch API
 // ─────────────────────────────────────────────────────────────────
 
-#include "discovery_globals.h"   // shared types & extern declarations
-#include "wifi_control.h"        // HTTP server — also pulls in udp_control.h
-                                 //   udp_control auto-registers itself here
-#include "discovery.h"           // beacon + election — auto-registers itself
+#include "../../plugin_registry.h"
+#include "discovery_globals.h"
+#include "wifi_control.h"
+
+// wifi always starts the HTTP server — udp_control then handles promote/stop
+void wifi_setup() { wifi_control_setup(); }
+void wifi_loop()  { wifi_control_loop(); }
+
+REGISTER_PLUGIN(wifi);

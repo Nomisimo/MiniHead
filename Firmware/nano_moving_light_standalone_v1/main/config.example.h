@@ -1,4 +1,4 @@
-// ── Plugin Config (v4.2) ──────────────────────────────────────────
+// ── Plugin Config (Standalone v1) ────────────────────────────────
 // Copy this file to config.h and fill in your credentials.
 // config.h is gitignored — never commit it.
 //
@@ -23,34 +23,15 @@ static const WifiCredential WIFI_NETWORKS[] = {
 };
 static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
 
-// ── Feature flags ─────────────────────────────────────────────────
-// To disable a plugin: comment out its #define — one line is enough.
-// MUST be defined BEFORE the plugin #includes so that wifi_control.h
-// and discovery.h can read them at compile time.
-
-#define PLUGIN_UDP_CONTROL
-#define PLUGIN_ARTNET
-
 // ── Plugins ───────────────────────────────────────────────────────
+// To disable a plugin: comment out its #include line.
+// To add a plugin:     add #include "plugins/<name>/<name>.h"
+//
+// Each plugin auto-registers its setup()/loop() via REGISTER_PLUGIN.
+// Plugins run in the order they appear here.
+//
 // NOTE: startup_animation must come first (runs before WiFi is up).
 //       wifi must come after startup_animation.
 
-//#include "plugins/startup_animation/startup_animation.h"
-#include "plugins/wifi/wifi.h"                    // HTTP server, cues, sequencer
-
-#ifdef PLUGIN_UDP_CONTROL
-#include "plugins/udp_control/udp_control.h"      // discovery + leader election + UDP fanout
-#endif
-
-#ifdef PLUGIN_ARTNET
-#include "plugins/artnet/artnet.h"                // Art-Net / DMX512 receiver — port 6454
-#endif
-
-// ── Stubs ─────────────────────────────────────────────────────────
-#ifndef PLUGIN_UDP_CONTROL
-#include "plugins/wifi/discovery_stubs.h"
-#endif
-
-#ifndef PLUGIN_ARTNET
-#include "plugins/artnet/artnet_stubs.h"
-#endif
+#include "plugins/startup_animation/startup_animation.h"
+#include "plugins/wifi/wifi.h"

@@ -4,10 +4,13 @@
 // Handles: HTTP server (ESPAsyncWebServer), all API endpoints,
 //          cue storage, sequencer.
 // Only active when nodeRole == ROLE_LEADER (started by discovery.h).
-// Depends on: core.h, discovery_globals.h, udp_control.h
+// Depends on: core.h, discovery_globals.h
+// UDP functions are weak stubs — overridden by udp_control plugin.
+// Art-Net routes are registered by artnet plugin.
 // ─────────────────────────────────────────────────────────────────
 
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "html_page.h"
@@ -15,10 +18,20 @@
 #include "core_globals.h"
 #include "log_config.h"
 #include "log_panel_html.h"
-#include "discovery_panel_html.h"
 #include "discovery_globals.h"
-#include "udp_control.h"
-#include "../artnet/artnet_panel_html.h"
+
+// ── UDP forward declarations ──────────────────────────────────────
+// Implemented by plugins/udp_control/udp_commands.h.
+void udp_sendCommand(const char* ip, const char* mac, const char* cmd);
+void udp_broadcastCommand(const char* cmd);
+void udp_sendIdentifyOn(const char* ip, const char* mac);
+void udp_sendIdentifyOff(const char* ip, const char* mac);
+
+// ── ArtNet forward declaration ────────────────────────────────────
+// Implemented by plugins/artnet/artnet_control.h (included after this file).
+#ifdef PLUGIN_ARTNET
+void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
+#endif
 
 #define MAX_CUES    32
 #define MAX_TARGETS 16   // max FixID targets per cue
@@ -155,20 +168,20 @@ static String _getBody(AsyncWebServerRequest* req) {
 void sendJson(AsyncWebServerRequest* req, int code, const String& json) {
   AsyncWebServerResponse* r = req->beginResponse(code, "application/json", json);
   r->addHeader("Access-Control-Allow-Origin", "*");
+  r->addHeader("Cache-Control", "no-store");
   req->send(r);
 }
 
 static void sendHtmlProgmem(AsyncWebServerRequest* req,
                             const char* progmemStr,
-                            bool noCache = false) {
+                            bool /*noCache*/ = false) {
+  // Always no-store: ESPAsyncWebServer doesn't send ETag/Last-Modified so
+  // browsers mishandle conditional GETs on reload — panels stop loading.
   AsyncWebServerResponse* r = req->beginResponse_P(200, "text/html", progmemStr);
   r->addHeader("Access-Control-Allow-Origin", "*");
-  if (noCache) r->addHeader("Cache-Control", "no-cache");
+  r->addHeader("Cache-Control", "no-store");
   req->send(r);
 }
-
-// artnet_control.h needs server, sendJson, _getBody — include after they're defined
-#include "../artnet/artnet_control.h"
 
 // ── Cue helpers ───────────────────────────────────────────────────
 
@@ -195,6 +208,7 @@ void fireCueToTargets(const Cue& c) {
                ",PAN:" + String(c.pan) + ",TILT:" + String(c.tilt);
 
   bool toAll = (c.targetCount == 0) || (c.targetCount == 1 && c.fixTargets[0] == 0);
+  Serial.printf("[Seq] Fire '%s': %s  toAll=%d\n", c.name, cmd.c_str(), (int)toAll);
   if (toAll) {
     rainbowActive = false;
     applyCommand(cmd);
@@ -216,12 +230,6 @@ void fireCueToTargets(const Cue& c) {
 // ── Route handlers ────────────────────────────────────────────────
 
 void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
-// Panel HTML fragments are served regardless of role — they are static JS/HTML that
-// call the APIs themselves, and the API endpoints handle the leader/follower guard.
-// Serving them even as follower prevents "Network heads plugin not available" errors
-// when loadModule() fetches them from a browser pointed at this ESP's IP.
-void handleDiscoveryPanel(AsyncWebServerRequest* req) { sendHtmlProgmem(req, DISCOVERY_PANEL_HTML); }
-void handleArtnetPanel(AsyncWebServerRequest* req)    { sendHtmlProgmem(req, ARTNET_PANEL_HTML, true); }
 
 void handleStatus(AsyncWebServerRequest* req)     { sendJson(req, 200, "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\""+WiFi.localIP().toString()+"\"}"); }
 void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
@@ -235,11 +243,13 @@ void handleGetHeads(AsyncWebServerRequest* req) {
   String json = "[";
   json += "{\"mac\":\"" + String(ownMAC) + "\",\"ip\":\"" + String(ownIP) + "\""
         + ",\"fixID\":" + String(ownFixID) + ",\"name\":\"" + String(ownName) + "\""
+        + ",\"mode\":\"" + String(ownMode) + "\""
         + ",\"role\":\"LEADER\",\"self\":true}";
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active) continue;
     json += ",{\"mac\":\"" + String(peers[i].mac) + "\",\"ip\":\"" + String(peers[i].ip) + "\""
           + ",\"fixID\":" + String(peers[i].fixID) + ",\"name\":\"" + String(peers[i].name) + "\""
+          + ",\"mode\":\"" + String(peers[i].mode) + "\""
           + ",\"role\":\"" + (peers[i].role == ROLE_LEADER ? "LEADER" : "FOLLOWER") + "\",\"self\":false}";
   }
   json += "]";
@@ -274,7 +284,14 @@ void handleSetName(AsyncWebServerRequest* req) {
   if (mac == String(ownMAC)) { discovery_saveName(name); sendJson(req, 200, "{\"status\":\"ok\"}"); return; }
   for (int i = 0; i < peerCount; i++) {
     if (peers[i].active && String(peers[i].mac) == mac) {
-      udp_sendSetName(peers[i].ip, peers[i].mac, name);
+      // Forward via HTTP — config commands no longer use UDP
+      String url = "http://" + String(peers[i].ip) + "/api/config/name";
+      HTTPClient http;
+      http.begin(url);
+      http.addHeader("Content-Type", "application/json");
+      String body = "{\"name\":\"" + String(name) + "\"}";
+      http.POST(body);
+      http.end();
       strlcpy(peers[i].name, name, sizeof(peers[i].name));
       sendJson(req, 200, "{\"status\":\"ok\"}"); return;
     }
@@ -293,8 +310,14 @@ void handleSetFixID(AsyncWebServerRequest* req) {
   if (mac == String(ownMAC)) { discovery_saveFixID(newID); sendJson(req, 200, "{\"status\":\"ok\",\"fixID\":"+String(newID)+"}"); return; }
   for (int i = 0; i < peerCount; i++) {
     if (peers[i].active && String(peers[i].mac) == mac) {
-      char cmd[32]; snprintf(cmd, sizeof(cmd), "SETFIXID:%d", newID);
-      udp_sendCommand(peers[i].ip, peers[i].mac, cmd);
+      // Forward via HTTP — config commands no longer use UDP
+      String url = "http://" + String(peers[i].ip) + "/api/config/fixid";
+      HTTPClient http;
+      http.begin(url);
+      http.addHeader("Content-Type", "application/json");
+      String body = "{\"fixID\":" + String(newID) + "}";
+      http.POST(body);
+      http.end();
       peers[i].fixID = newID;
       sendJson(req, 200, "{\"status\":\"ok\",\"fixID\":"+String(newID)+"}"); return;
     }
@@ -326,6 +349,7 @@ void handleIdentify(AsyncWebServerRequest* req) {
 
 void handleSend(AsyncWebServerRequest* req) {
   String body = _getBody(req);
+  Serial.printf("[Send] body=%s\n", body.isEmpty() ? "<empty>" : body.c_str());
   if (body.isEmpty()) { sendJson(req, 400, "{\"status\":\"error\",\"message\":\"No body\"}"); return; }
   JsonDocument doc;
   if (deserializeJson(doc, body)) { sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return; }
@@ -466,22 +490,24 @@ void handleReorderCues(AsyncWebServerRequest* req) {
 
 void handleSeqStart(AsyncWebServerRequest* req) {
   JsonDocument doc;
-  if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
+  String body = _getBody(req);
+  if (body.isEmpty()) { Serial.println("[Seq] Start: empty body"); sendJson(req, 400, "{\"status\":\"error\",\"message\":\"No body\"}"); return; }
+  if (deserializeJson(doc, body)) { Serial.println("[Seq] Start: bad JSON"); sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return; }
   seqInterval = doc["interval_ms"] | 1000;
   seqLoop     = doc["loop"]        | true;
   JsonArray ids = doc["cue_ids"].as<JsonArray>();
   seqIdCount = 0;
   for (JsonVariant v : ids) if (seqIdCount < MAX_CUES) seqIds[seqIdCount++] = v.as<unsigned long>();
-  seqIndex = 0; seqRunning = (seqIdCount > 0); lastSeqStep = millis();
+  seqIndex = 0; seqRunning = (seqIdCount > 0);
+  lastSeqStep = millis() - seqInterval;  // fire first cue immediately
+  Serial.printf("[Seq] Start: %d cue(s), interval=%lums, loop=%d\n", seqIdCount, seqInterval, (int)seqLoop);
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
 // ── Log config handlers ───────────────────────────────────────────
 
 void handleLogPanel(AsyncWebServerRequest* req) {
-  AsyncWebServerResponse* resp = req->beginResponse_P(200, "text/html", LOG_PANEL_HTML);
-  resp->addHeader("Access-Control-Allow-Origin","*");
-  req->send(resp);
+  sendHtmlProgmem(req, LOG_PANEL_HTML);
 }
 void handleGetLogConfig(AsyncWebServerRequest* req) {
   sendJson(req, 200, logcfg_toJson());
@@ -491,9 +517,65 @@ void handleSetLogConfig(AsyncWebServerRequest* req) {
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
+// ── Config routes (always active — no requireLeader() guard) ─────
+// Called from setupRoutes() for LEADER/FOLLOWER and directly for
+// ARTNET ESPs which skip the full HTTP server.
+
+void setupConfigRoutes() {
+  // POST /api/config/fixid  {"fixID": N}
+  server.on("/api/config/fixid", HTTP_POST,
+    [](AsyncWebServerRequest* req){},
+    nullptr,
+    [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+      JsonDocument doc;
+      if (deserializeJson(doc, data, len)) { req->send(400); return; }
+      int id = doc["fixID"] | 0;
+      if (id > 0) { discovery_saveFixID(id); Serial.printf("[Config] FixID set to %d\n", id); }
+      sendJson(req, 200, "{\"status\":\"ok\"}");
+    });
+
+  // POST /api/config/name  {"name": "..."}
+  server.on("/api/config/name", HTTP_POST,
+    [](AsyncWebServerRequest* req){},
+    nullptr,
+    [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+      JsonDocument doc;
+      if (deserializeJson(doc, data, len)) { req->send(400); return; }
+      const char* name = doc["name"] | "";
+      discovery_saveName(name);
+      Serial.printf("[Config] Name set to \"%s\"\n", ownName);
+      sendJson(req, 200, "{\"status\":\"ok\"}");
+    });
+
+#ifdef PLUGIN_ARTNET
+  // POST /api/config/patch  {"fixID": F, "universe": U, "startAddr": A}
+  // Only on ARTNET ESPs — UDP ESPs have no patch concept.
+  server.on("/api/config/patch", HTTP_POST,
+    [](AsyncWebServerRequest* req){},
+    nullptr,
+    [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+      JsonDocument doc;
+      if (deserializeJson(doc, data, len)) { req->send(400); return; }
+      int fid  = doc["fixID"]     | 0;
+      int uni  = doc["universe"]  | 0;
+      int addr = doc["startAddr"] | 1;
+      if (fid <= 0 || fid != ownFixID) {
+        req->send(400, "application/json", "{\"status\":\"error\",\"message\":\"fixID mismatch\"}");
+        return;
+      }
+      artnet_upsertPatch(fid, (uint16_t)uni, (uint16_t)addr);
+      Serial.printf("[Config] Patch: Fix#%d U%d @%d\n", fid, uni, addr);
+      sendJson(req, 200, "{\"status\":\"ok\"}");
+    });
+#endif
+}
+
 // ── Route setup ───────────────────────────────────────────────────
 
 void setupRoutes() {
+  // ── Config endpoints (always active, no leader guard) ────────
+  setupConfigRoutes();
+
   // ── CORS preflight (OPTIONS) ──────────────────────────────────
   server.on("/*", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
     AsyncWebServerResponse* r = req->beginResponse(200);
@@ -511,36 +593,16 @@ void setupRoutes() {
   });
 
   // ── Static HTML pages ─────────────────────────────────────────
-  server.on("/",                                  HTTP_GET, [](AsyncWebServerRequest* r){ handleRoot(r); });
-  server.on("/plugins/wifi/discovery_panel.html", HTTP_GET, [](AsyncWebServerRequest* r){ handleDiscoveryPanel(r); });
-  server.on("/plugins/artnet/panel.html",         HTTP_GET, [](AsyncWebServerRequest* r){ handleArtnetPanel(r); });
-  server.on("/plugins/log/panel.html",            HTTP_GET, [](AsyncWebServerRequest* r){ handleLogPanel(r); });
+  server.on("/",                       HTTP_GET, [](AsyncWebServerRequest* r){ handleRoot(r); });
+  server.on("/plugins/log/panel.html", HTTP_GET, [](AsyncWebServerRequest* r){ handleLogPanel(r); });
+  // Discovery panel  → registered by udp_control plugin
+  // Art-Net panel    → registered by artnet plugin
+  // Art-Net API      → registered by artnet plugin
 
   // ── Log config API ────────────────────────────────────────────
   server.on("/api/logconfig", HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetLogConfig(r); });
   server.on("/api/logconfig", HTTP_POST,
     [](AsyncWebServerRequest* r){ handleSetLogConfig(r); },
-    nullptr, _bodyAccumulator);
-
-  // ── Art-Net API — specific paths before wildcards ─────────────
-  server.on("/api/artnet/status",     HTTP_GET,    [](AsyncWebServerRequest* r){ handleArtnetStatus(r); });
-  server.on("/api/artnet/patch",      HTTP_GET,    [](AsyncWebServerRequest* r){ handleGetArtnetPatch(r); });
-  server.on("/api/artnet/patch",      HTTP_DELETE, [](AsyncWebServerRequest* r){ handleClearAllArtnetPatches(r); });
-  // /bulk must be registered before /api/artnet/patch (POST) so it isn't shadowed
-  server.on("/api/artnet/patch/bulk", HTTP_POST,
-    [](AsyncWebServerRequest* r){ handleBulkArtnetPatch(r); },
-    nullptr, _bodyAccumulator);
-  server.on("/api/artnet/patch",      HTTP_POST,
-    [](AsyncWebServerRequest* r){ handlePostArtnetPatch(r); },
-    nullptr, _bodyAccumulator);
-  // Wildcard: DELETE & PUT for /api/artnet/patch/<fixID> and /universe/<uni>
-  server.on("/api/artnet/patch/*",    HTTP_DELETE, [](AsyncWebServerRequest* r){
-    String path = r->url();
-    if (path.startsWith("/api/artnet/patch/universe/")) handleClearUniverseArtnetPatches(r);
-    else                                                handleDeleteArtnetPatch(r);
-  });
-  server.on("/api/artnet/patch/*",    HTTP_PUT,
-    [](AsyncWebServerRequest* r){ handleUpdateArtnetPatch(r); },
     nullptr, _bodyAccumulator);
 
   // ── General API ───────────────────────────────────────────────
@@ -603,10 +665,23 @@ void setupRoutes() {
 // ── Lifecycle ─────────────────────────────────────────────────────
 
 void wifi_control_setup() {
+#ifdef PLUGIN_ARTNET
+  // Art-Net mode: start a minimal HTTP server for config endpoints only.
+  // PC App is always leader — no cues, no full API, just /api/config/*.
+  _serverActive = false;
+  logcfg_load();
+  setupConfigRoutes();
+  server.onNotFound([](AsyncWebServerRequest* req) { requireLeader(req); });
+  if (!_serverStarted) {
+    server.begin();
+    _serverStarted = true;
+  }
+  Serial.println("[WiFi] Art-Net mode — config HTTP server :80");
+  return;
+#endif
   _serverActive = true;
   logcfg_load();
   loadCuesFromFlash();
-  artnet_control_setup();
   Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
   Serial.flush();
 
@@ -642,8 +717,7 @@ void wifi_control_stop() {
 void wifi_control_setup_follower() {
   _serverActive = false;   // follower — APIs will redirect
   logcfg_load();
-  // Skip loadCuesFromFlash / artnet_control_setup — those write state that only
-  // makes sense on the leader. The follower just needs routes + server running.
+  // Skip loadCuesFromFlash — that writes state only meaningful on the leader.
   Serial.println("[WiFi] Follower — starting server for browser redirects");
   setupRoutes();
   if (!_serverStarted) {
@@ -656,23 +730,28 @@ void wifi_control_setup_follower() {
 // Called when this node wins election after having been a follower —
 // the server is already running, just activate the API layer.
 void wifi_control_promote() {
+#ifdef PLUGIN_ARTNET
+  return;  // Art-Net mode: never promote — PC App is always leader
+#endif
   _serverActive = true;
   logcfg_load();
   loadCuesFromFlash();
-  artnet_control_setup();
   Serial.println("[WiFi] Promoted to LEADER — APIs active");
 }
 
 void wifi_control_loop() {
-  // No handleClient() needed — AsyncWebServer runs on the WiFi task.
+  if (!_serverActive) return;
   if (seqRunning && seqIdCount > 0) {
     unsigned long now = millis();
     if (now - lastSeqStep >= seqInterval) {
       lastSeqStep = now;
       unsigned long tid = seqIds[seqIndex];
+      Serial.printf("[Seq] Step %d/%d  cue#%lu\n", seqIndex + 1, seqIdCount, tid);
+      bool found = false;
       for (int i = 0; i < cueCount; i++) {
-        if (cues[i].id == tid) { fireCueToTargets(cues[i]); break; }
+        if (cues[i].id == tid) { fireCueToTargets(cues[i]); found = true; break; }
       }
+      if (!found) Serial.printf("[Seq] Cue #%lu not found (cueCount=%d)\n", tid, cueCount);
       if (++seqIndex >= seqIdCount) { if (seqLoop) seqIndex = 0; else seqRunning = false; }
     }
   }

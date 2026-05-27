@@ -28,7 +28,10 @@ updatePreview();loadCues();
 
 function loadModule(url, id) {
   fetch(url)
-    .then(function(r){return r.text();})
+    .then(function(r){
+      if(!r.ok) throw new Error(r.status);
+      return r.text();
+    })
     .then(function(html){
       var el=document.getElementById(id);
       if(!el) return;
@@ -41,10 +44,9 @@ function loadModule(url, id) {
     })
     .catch(function(){
       var el=document.getElementById(id);
-      if(el) el.innerHTML='<div class="module-unavailable">// module not available</div>';
+      if(el) el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:12px;">// module not available</div>';
     });
 }
-loadModule('/plugins/wifi/discovery_panel.html','module-container');
 loadModule('/plugins/artnet/artnet_panel.html','artnet-module-container');
 loadModule('/plugins/log/log_panel.html','log-module-container');
 
@@ -69,4 +71,4 @@ function an_pollStatus(){
     }
   }).catch(function(){});
 }
-setInterval(an_pollStatus,250);
+setInterval(an_pollStatus,2000);

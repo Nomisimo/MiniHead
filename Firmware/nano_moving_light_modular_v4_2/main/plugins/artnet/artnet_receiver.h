@@ -17,7 +17,8 @@
 #include "../../core.h"
 #include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
-#include "../wifi/udp_control.h"
+// udp_sendCommand provided by plugins/udp_control — forward-declare only
+void udp_sendCommand(const char* ip, const char* mac, const char* cmd);
 #include "../storage/storage.h"
 
 // ── Global definitions ────────────────────────────────────────────
@@ -66,7 +67,9 @@ void artnet_loadPatches() {
     artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
     artnetPatchCount++;
   }
+#ifndef PLUGIN_ARTNET
   Serial.printf("[ArtNet] Loaded %d patch(es) from /artnet.json\n", artnetPatchCount);
+#endif
 }
 
 // ── Apply DMX to own fixture ──────────────────────────────────────
@@ -185,12 +188,26 @@ static void artnet_parsePacket(uint8_t* data, size_t len) {
 // ── Plugin lifecycle ──────────────────────────────────────────────
 
 void artnet_receiver_setup() {
-  // Load patches from LittleFS so Art-Net works on EVERY node (leader + follower).
-  // artnet_control_setup() may reload them again later (no-op if already loaded).
   artnet_loadPatches();
 
-  // Use WiFiUDP polling — same pattern as udp_control.h (port 4211),
-  // confirmed working on ESP32-C3 / Arduino Core 3.x / IDF 5.x.
+#ifdef PLUGIN_ARTNET
+  // Follower/receiver mode: keep only the patch for this node's own fixID.
+  // Routing to other fixtures is the PC App leader's responsibility.
+  {
+    int keep = 0;
+    for (int i = 0; i < artnetPatchCount; i++) {
+      if (artnetPatches[i].fixID == ownFixID)
+        artnetPatches[keep++] = artnetPatches[i];
+    }
+    artnetPatchCount = keep;
+    if (keep > 0)
+      Serial.printf("[ArtNet] Receiver mode — own patch: Fix#%d U%d Addr%d\n",
+        artnetPatches[0].fixID, artnetPatches[0].universe, artnetPatches[0].startAddr);
+    else
+      Serial.println("[ArtNet] Receiver mode — no patch for own fixID yet");
+  }
+#endif
+
   if (_artnetUdp.begin(ARTNET_PORT)) {
     Serial.printf("[ArtNet] Listening on port %d\n", ARTNET_PORT);
   } else {

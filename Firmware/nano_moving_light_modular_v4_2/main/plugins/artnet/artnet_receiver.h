@@ -1,13 +1,13 @@
 #pragma once
 
 // ── Art-Net Receiver ─────────────────────────────────────────────
-// Receives ArtDmx packets via AsyncUDP (built into ESP32 Arduino Core).
-// No external library required — replaces ArtnetWifi dependency.
-// Callback runs on the WiFi task, so no loop polling is needed.
+// Receives ArtDmx packets via WiFiUDP (built into ESP32 Arduino Core).
+// No external library required.
 //
-// Every node (leader AND follower) runs this independently:
-//   - Applies channels that match its own ownFixID patch locally.
-//   - Leader additionally fans out to followers via UDP CMD.
+// Each ESP handles ArtNet entirely on its own:
+//   - Listens on UDP port 6454 for all incoming packets.
+//   - Applies only packets that match its own fixID / universe / startAddr.
+//   - No relay to other nodes — the ArtNet source addresses each fixture directly.
 //
 // Depends on: artnet_globals.h, core.h, discovery_globals.h
 // ─────────────────────────────────────────────────────────────────
@@ -17,8 +17,6 @@
 #include "../../core.h"
 #include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
-// udp_sendCommand provided by plugins/udp_control — forward-declare only
-void udp_sendCommand(const char* ip, const char* mac, const char* cmd);
 #include "../storage/storage.h"
 
 // ── Global definitions ────────────────────────────────────────────
@@ -37,8 +35,8 @@ static int     _preArtPan=90, _preArtTilt=90;
 
 // ── Forward declarations ──────────────────────────────────────────
 void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
-static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
-                               uint8_t sequence, uint8_t* data);
+static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data);
+static void artnet_onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data);
 
 // ── Patch persistence (must live here so every node can load/save) ─
 void artnet_savePatches() {
@@ -67,15 +65,15 @@ void artnet_loadPatches() {
     artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
     artnetPatchCount++;
   }
-#ifndef PLUGIN_ARTNET
   Serial.printf("[ArtNet] Loaded %d patch(es) from /artnet.json\n", artnetPatchCount);
-#endif
 }
 
 // ── Apply DMX to own fixture ──────────────────────────────────────
-static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data) {
+// Returns true if a patch matched and values were applied — used by
+// artnet_onDmxFrame to decide whether to set artnetActive.
+static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data) {
   // Identify is held — do not let Art-Net override the white flash
-  if (_identifyActive) return;
+  if (_identifyActive) return false;
 
   // Track previous output values — only log when something actually changes
   static uint8_t pM=0, pR=0, pG=0, pB=0, pW=0;
@@ -113,60 +111,33 @@ static void artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
     if (!rainbowActive) setLED(r, g, b, w);
     setPan(pan);
     setTilt(tilt);
-    return;
+    return true;   // matched — artnet_onDmxFrame will set artnetActive
   }
-}
-
-// ── Leader relay: fan Art-Net data to followers ───────────────────
-static void artnet_relayToFollowers(uint16_t universe, uint16_t length, uint8_t* data) {
-  for (int pi = 0; pi < artnetPatchCount; pi++) {
-    const ArtnetPatch& p = artnetPatches[pi];
-    if (p.universe != universe) continue;
-    if (p.fixID    == ownFixID) continue;
-
-    int base = (int)p.startAddr - 1;
-    if (base < 0 || base + DMX_FOOTPRINT > (int)length) continue;
-
-    uint8_t master = data[base + CH_MASTER];
-    uint8_t r = (uint16_t)data[base + CH_RED]   * master / 255;
-    uint8_t g = (uint16_t)data[base + CH_GREEN]  * master / 255;
-    uint8_t b = (uint16_t)data[base + CH_BLUE]   * master / 255;
-    uint8_t w = (uint16_t)data[base + CH_WHITE]  * master / 255;
-    int pan   = map(data[base + CH_PAN],  0, 255, 0, 270);
-    int tilt  = map(data[base + CH_TILT], 0, 255, 0, 270);
-
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "R:%d,G:%d,B:%d,W:%d,PAN:%d,TILT:%d", r, g, b, w, pan, tilt);
-
-    for (int j = 0; j < peerCount; j++) {
-      if (peers[j].active && peers[j].fixID == p.fixID) {
-        udp_sendCommand(peers[j].ip, peers[j].mac, cmd);
-        break;
-      }
-    }
-  }
+  return false;    // no patch matched this universe → artnetActive unchanged
 }
 
 // ── ArtDmx callback ───────────────────────────────────────────────
+// Every ESP handles its own ArtNet reception independently.
+// No relay to other nodes — each fixture is patched and receives directly.
 static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
                                uint8_t sequence, uint8_t* data) {
-  if (!artnetActive) {
-    // First packet of a new ArtNet session — save the pre-ArtNet state so
-    // we can restore it when the sender stops (avoids leaving the light black).
-    if (!_artnetHadPre) {
-      _preArtR    = curR;  _preArtG    = curG;
-      _preArtB    = curB;  _preArtW    = curW;
-      _preArtPan  = curPan; _preArtTilt = curTilt;
-      _artnetHadPre = true;
+  bool matched = artnet_applyOwnPatch(universe, length, data);
+
+  if (matched) {
+    if (!artnetActive) {
+      // First matching packet of a new session — save state for later restore.
+      if (!_artnetHadPre) {
+        _preArtR    = curR;  _preArtG    = curG;
+        _preArtB    = curB;  _preArtW    = curW;
+        _preArtPan  = curPan; _preArtTilt = curTilt;
+        _artnetHadPre = true;
+      }
+      if (logCfg.artnetEvents)
+        Serial.printf("[ArtNet] Active — universe %d\n", universe);
     }
-    if (logCfg.artnetEvents)
-      Serial.printf("[ArtNet] Active — receiving universe %d\n", universe);
+    artnetActive     = true;
+    artnetLastPacket = millis();
   }
-  artnetActive     = true;
-  artnetLastPacket = millis();
-  artnet_applyOwnPatch(universe, length, data);
-  if (nodeRole == ROLE_LEADER)
-    artnet_relayToFollowers(universe, length, data);
 }
 
 // ── Art-Net ArtDmx packet parser ──────────────────────────────────
@@ -192,9 +163,8 @@ static void artnet_parsePacket(uint8_t* data, size_t len) {
 void artnet_receiver_setup() {
   artnet_loadPatches();
 
-#ifdef PLUGIN_ARTNET
-  // Follower/receiver mode: keep only the patch for this node's own fixID.
-  // Routing to other fixtures is the PC App leader's responsibility.
+  // Every ESP handles ArtNet independently — keep only its own fixID's patch.
+  // There is no relay; each fixture is addressed directly by the ArtNet source.
   {
     int keep = 0;
     for (int i = 0; i < artnetPatchCount; i++) {
@@ -203,12 +173,11 @@ void artnet_receiver_setup() {
     }
     artnetPatchCount = keep;
     if (keep > 0)
-      Serial.printf("[ArtNet] Receiver mode — own patch: Fix#%d U%d Addr%d\n",
+      Serial.printf("[ArtNet] Own patch: Fix#%d U%d Addr%d\n",
         artnetPatches[0].fixID, artnetPatches[0].universe, artnetPatches[0].startAddr);
     else
-      Serial.println("[ArtNet] Receiver mode — no patch for own fixID yet");
+      Serial.println("[ArtNet] No patch for own fixID yet");
   }
-#endif
 
   if (_artnetUdp.begin(ARTNET_PORT)) {
     Serial.printf("[ArtNet] Listening on port %d\n", ARTNET_PORT);

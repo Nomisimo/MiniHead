@@ -133,7 +133,7 @@ void discovery_elect() {
 void discovery_sendBeacon() {
   char pkt[160];
   const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
-  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName);
+  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName, ownMode);
   // Use directed subnet broadcast (e.g. 192.168.178.255) instead of
   // 255.255.255.255 — Fritz!Box and similar routers don't reliably
   // forward limited broadcasts across WiFi→Ethernet boundaries.
@@ -150,22 +150,24 @@ void discovery_parseBeacon(const char* data, int len) {
   memcpy(buf, data, len); buf[len] = 0;
   if (strncmp(buf, "MINIHEAD|", 9) != 0) return;
 
-  char* fields[6]; int fi = 0;
+  // Beacon fields after "MINIHEAD|": MAC|IP|fixID|ROLE|NAME|MODE
+  char* fields[7]; int fi = 0;
   char* tok = strtok(buf + 9, "|");
-  while (tok && fi < 6) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
+  while (tok && fi < 7) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
   if (fi < 4) return;
 
   const char* mac   = fields[0];
   const char* ip    = fields[1];
   int         fixID = atoi(fields[2]);
   NodeRole    role  = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
-  const char* name  = (fi >= 6) ? fields[5] : "";
+  const char* name  = (fi >= 5) ? fields[4] : "";
+  const char* mode  = (fi >= 6) ? fields[5] : "";
 
   if (strcmp(mac, ownMAC) == 0) return;
 
-  discovery_addOrUpdate(mac, ip, fixID, role, name);
+  discovery_addOrUpdate(mac, ip, fixID, role, name, mode);
   if (logCfg.discoveryBeacons)
-    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"\n", mac, ip, fixID, fields[3], name);
+    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"  mode:%s\n", mac, ip, fixID, fields[3], name, mode);
 
   if (nodeRole == ROLE_LEADER && role == ROLE_LEADER)
     discovery_elect();

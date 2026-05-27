@@ -121,6 +121,17 @@ static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
 // No relay to other nodes — each fixture is patched and receives directly.
 static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
                                uint8_t sequence, uint8_t* data) {
+  // Always log packet arrival (gated) so the user can distinguish
+  // "no packets arriving" from "packets arriving but no patch match".
+  static uint16_t _lastLoggedUni = 0xFFFF;
+  if (logCfg.artnetEvents && universe != _lastLoggedUni) {
+    Serial.printf("[ArtNet] Packet received — universe %d  (own patch: U%d Fix#%d)\n",
+                  universe,
+                  artnetPatchCount > 0 ? artnetPatches[0].universe : -1,
+                  artnetPatchCount > 0 ? artnetPatches[0].fixID    : -1);
+    _lastLoggedUni = universe;
+  }
+
   bool matched = artnet_applyOwnPatch(universe, length, data);
 
   if (matched) {

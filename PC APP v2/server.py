@@ -194,6 +194,15 @@ def _send_udp_cmd(ip, cmd, mac=None):
     except Exception as e:
         print(f"[udp] send error to {ip}: {e}")
 
+def _send_udp_raw(ip, msg):
+    """Send a raw UDP string to CMD_PORT (no CMD|mac| wrapper)."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(msg.encode(), (ip, CMD_PORT))
+        sock.close()
+    except Exception as e:
+        print(f"[udp] raw send error to {ip}: {e}")
+
 def _broadcast_cmd(cmd):
     try:
         ip = _own_ip()
@@ -578,12 +587,12 @@ def api_head_set_name(mac):
 
 @app.route("/api/heads/<mac>/identify", methods=["POST"])
 def api_head_identify(mac):
+    data = request.get_json(force=True, silent=True) or {}
+    on   = data.get("on", True)
     with peers_lock:
         ip = peers.get(mac, {}).get("ip")
     if ip:
-        _send_udp_cmd(ip, "R:255,G:255,B:255,W:255,PAN:90,TILT:45", mac)
-        time.sleep(0.5)
-        _send_udp_cmd(ip, "R:0,G:0,B:0,W:0,PAN:90,TILT:45", mac)
+        _send_udp_raw(ip, f"IDENTIFY_ON|{mac}" if on else f"IDENTIFY_OFF|{mac}")
     return jsonify({"status": "ok"})
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

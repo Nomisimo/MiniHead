@@ -8,7 +8,14 @@ var sendTimer = null;
 var _editCueId = null;
 var _cDragId = null;
 var _artnetWasActive = false;
-var LOG_KEYS = ['wifi', 'udp', 'artnet', 'motion', 'serial', 'system'];
+// Keys match ESP firmware log_config.h — must be identical for push to work
+var LOG_KEYS = [
+  { key: 'artnetFrames',     label: 'ArtNet Frames'      },
+  { key: 'artnetEvents',     label: 'ArtNet Events'      },
+  { key: 'discoveryBeacons', label: 'Discovery Beacons'  },
+  { key: 'discoveryEvents',  label: 'Discovery Events'   },
+  { key: 'udpVerbose',       label: 'UDP Verbose'        },
+];
 
 // ── Init ───────────────────────────────────────────────────────────────────
 try {
@@ -325,26 +332,26 @@ function buildLogGrid() {
   var grid = document.getElementById('logGrid');
   if(!grid) return;
   var html = '';
-  LOG_KEYS.forEach(function(k){
-    html += '<label class="log-check"><input type="checkbox" id="log_'+k+'" checked><span>'+k+'</span></label>';
+  LOG_KEYS.forEach(function(entry){
+    html += '<label class="log-check"><input type="checkbox" id="log_'+entry.key+'" checked><span>'+entry.label+'</span></label>';
   });
   grid.innerHTML = html;
 }
 
 function loadLogFlags() {
   fetch('/api/logconfig').then(function(r){return r.json();}).then(function(d){
-    LOG_KEYS.forEach(function(k){
-      var el = document.getElementById('log_'+k);
-      if(el && k in d) el.checked = !!d[k];
+    LOG_KEYS.forEach(function(entry){
+      var el = document.getElementById('log_'+entry.key);
+      if(el && entry.key in d) el.checked = !!d[entry.key];
     });
   }).catch(function(){});
 }
 
 function logSave() {
   var payload = {};
-  LOG_KEYS.forEach(function(k){
-    var el = document.getElementById('log_'+k);
-    if(el) payload[k] = el.checked;
+  LOG_KEYS.forEach(function(entry){
+    var el = document.getElementById('log_'+entry.key);
+    if(el) payload[entry.key] = el.checked;
   });
   fetch('/api/esp/logconfig', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)

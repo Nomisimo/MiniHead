@@ -25,7 +25,11 @@ Terminal keys (also work while browser is open):
 """
 
 import socket, struct, sys, time, threading, math, os
-import termios, tty
+import sys as _sys
+if _sys.platform == 'win32':
+    import msvcrt as _msvcrt
+else:
+    import termios, tty
 from flask import Flask, request, jsonify
 
 # ── Config ────────────────────────────────────────────────────────
@@ -823,6 +827,9 @@ def display():
         time.sleep(1.0 / 15)
 
 def getch():
+    if sys.platform == 'win32':
+        ch = _msvcrt.getwch()
+        return ch
     fd = sys.stdin.fileno(); old = termios.tcgetattr(fd)
     try:
         tty.setraw(fd); return sys.stdin.read(1)

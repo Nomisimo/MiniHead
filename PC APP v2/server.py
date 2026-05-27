@@ -419,8 +419,9 @@ def artnet_sniffer():
     while True:
         try:
             data, addr = sock.recvfrom(600)
-            # Minimal Art-Net DMX parse: header "Art-Net\0", OpCode 0x5000
-            if len(data) < 18 or data[:7] != b"Art-Net":
+            # Minimal Art-Net DMX parse: header "Art-Net\0" (8 bytes), OpCode 0x5000
+            # Spec: minimum valid ArtDmx = 18-byte header + 2 DMX bytes = 20 bytes minimum
+            if len(data) < 20 or data[:8] != b"Art-Net\0":
                 continue
             opcode = struct.unpack_from("<H", data, 8)[0]
             if opcode != 0x5000:

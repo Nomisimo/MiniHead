@@ -159,13 +159,13 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div class="panel-title">// Motion</div><hr>
     <div class="motion-row">
       <div class="motion-label">PAN</div>
-      <input type="range" class="horizontal" min="0" max="180" value="90" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
-      <input type="number" min="0" max="180" value="90" id="vPan" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fPan').value=this.value;onMotion();">
+      <input type="range" class="horizontal" min="0" max="270" value="135" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
+      <input type="number" min="0" max="270" value="135" id="vPan" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fPan').value=this.value;onMotion();">
     </div>
     <div class="motion-row">
       <div class="motion-label">TILT</div>
-      <input type="range" class="horizontal" min="0" max="180" value="90" id="fTilt" oninput="document.getElementById('vTilt').value=this.value;onMotion()">
-      <input type="number" min="0" max="180" value="90" id="vTilt" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fTilt').value=this.value;onMotion();">
+      <input type="range" class="horizontal" min="0" max="270" value="135" id="fTilt" oninput="document.getElementById('vTilt').value=this.value;onMotion()">
+      <input type="number" min="0" max="270" value="135" id="vTilt" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fTilt').value=this.value;onMotion();">
     </div>
   </div>
 

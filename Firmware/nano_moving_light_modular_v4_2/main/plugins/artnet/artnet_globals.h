@@ -14,8 +14,10 @@
 #define ARTNET_TIMEOUT_MS 8000
 
 // ── Per-fixture patch record ─────────────────────────────────────
+// Each ESP stores exactly ONE patch — its own universe + startAddr.
+// fixID is not stored here; the PC App uses fixID for routing but
+// the ESP only ever needs to know which universe/address is its own.
 struct ArtnetPatch {
-  int      fixID;       // fixture ID (matches ownFixID or peers[i].fixID)
   uint16_t universe;    // Art-Net Port-Address 0–32767
   uint16_t startAddr;   // DMX start address 1–512 (1-based)
 };

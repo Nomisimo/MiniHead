@@ -9,10 +9,6 @@
 #include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
 
-// Forward declaration — artnet_upsertPatch is defined in artnet_control.h
-// which is included after this file.
-void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
-
 static WiFiUDP _cmdUDP;
 
 // ── Identify watchdog ─────────────────────────────────────────────

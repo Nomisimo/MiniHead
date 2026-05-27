@@ -30,7 +30,7 @@ void udp_sendIdentifyOff(const char* ip, const char* mac);
 // ── ArtNet forward declaration ────────────────────────────────────
 // Implemented by plugins/artnet/artnet_control.h (included after this file).
 #ifdef PLUGIN_ARTNET
-void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
+void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 #endif
 
 #define MAX_CUES    32
@@ -548,7 +548,7 @@ void setupConfigRoutes() {
     });
 
 #ifdef PLUGIN_ARTNET
-  // POST /api/config/patch  {"fixID": F, "universe": U, "startAddr": A}
+  // POST /api/config/patch  {"universe": U, "startAddr": A}
   // Only on ARTNET ESPs — UDP ESPs have no patch concept.
   server.on("/api/config/patch", HTTP_POST,
     [](AsyncWebServerRequest* req){},
@@ -556,15 +556,10 @@ void setupConfigRoutes() {
     [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
       JsonDocument doc;
       if (deserializeJson(doc, data, len)) { req->send(400); return; }
-      int fid  = doc["fixID"]     | 0;
       int uni  = doc["universe"]  | 0;
       int addr = doc["startAddr"] | 1;
-      if (fid <= 0 || fid != ownFixID) {
-        req->send(400, "application/json", "{\"status\":\"error\",\"message\":\"fixID mismatch\"}");
-        return;
-      }
-      artnet_upsertPatch(fid, (uint16_t)uni, (uint16_t)addr);
-      Serial.printf("[Config] Patch: Fix#%d U%d @%d\n", fid, uni, addr);
+      artnet_upsertPatch((uint16_t)uni, (uint16_t)addr);
+      Serial.printf("[Config] Patch: U%d @%d\n", uni, addr);
       sendJson(req, 200, "{\"status\":\"ok\"}");
     });
 #endif

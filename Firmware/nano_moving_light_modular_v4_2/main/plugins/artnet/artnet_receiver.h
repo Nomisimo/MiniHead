@@ -6,7 +6,7 @@
 //
 // Each ESP handles ArtNet entirely on its own:
 //   - Listens on UDP port 6454 for all incoming packets.
-//   - Applies only packets that match its own fixID / universe / startAddr.
+//   - Applies only packets that match its own universe / startAddr.
 //   - No relay to other nodes — the ArtNet source addresses each fixture directly.
 //
 // Depends on: artnet_globals.h, core.h, discovery_globals.h
@@ -34,7 +34,7 @@ static uint8_t _preArtR=0, _preArtG=0, _preArtB=0, _preArtW=0;
 static int     _preArtPan=90, _preArtTilt=90;
 
 // ── Forward declarations ──────────────────────────────────────────
-void artnet_upsertPatch(int fixID, uint16_t universe, uint16_t startAddr);
+void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data);
 static void artnet_onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data);
 
@@ -44,7 +44,6 @@ void artnet_savePatches() {
   JsonArray arr = doc.to<JsonArray>();
   for (int i = 0; i < artnetPatchCount; i++) {
     JsonObject o = arr.add<JsonObject>();
-    o["fixID"]     = artnetPatches[i].fixID;
     o["universe"]  = artnetPatches[i].universe;
     o["startAddr"] = artnetPatches[i].startAddr;
   }
@@ -60,7 +59,6 @@ void artnet_loadPatches() {
   }
   for (JsonObject o : doc.as<JsonArray>()) {
     if (artnetPatchCount >= MAX_PATCHES) break;
-    artnetPatches[artnetPatchCount].fixID     = o["fixID"]     | 0;
     artnetPatches[artnetPatchCount].universe  = o["universe"]  | 0;
     artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
     artnetPatchCount++;
@@ -81,12 +79,11 @@ static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
 
   for (int i = 0; i < artnetPatchCount; i++) {
     const ArtnetPatch& p = artnetPatches[i];
-    if (p.fixID    != ownFixID) continue;
     if (p.universe != universe) continue;
 
     int base = (int)p.startAddr - 1;
     if (base < 0 || base + DMX_FOOTPRINT > (int)length) {
-      Serial.printf("[ArtNet] SKIP Fix#%d base=%d len=%u\n", p.fixID, base, length);
+      Serial.printf("[ArtNet] SKIP base=%d len=%u\n", base, length);
       continue;
     }
 
@@ -100,8 +97,8 @@ static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
 
     if (master!=pM || r!=pR || g!=pG || b!=pB || w!=pW || pan!=pPan || tilt!=pTilt) {
       if (logCfg.artnetFrames)
-        Serial.printf("[ArtNet] Fix#%d  M=%u R=%u G=%u B=%u W=%u  PAN=%d TILT=%d\n",
-                      p.fixID, master, r, g, b, w, pan, tilt);
+        Serial.printf("[ArtNet] U%u Addr%u  M=%u R=%u G=%u B=%u W=%u  PAN=%d TILT=%d\n",
+                      p.universe, p.startAddr, master, r, g, b, w, pan, tilt);
       pM=master; pR=r; pG=g; pB=b; pW=w; pPan=pan; pTilt=tilt;
     }
 
@@ -125,10 +122,10 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
   // "no packets arriving" from "packets arriving but no patch match".
   static uint16_t _lastLoggedUni = 0xFFFF;
   if (logCfg.artnetEvents && universe != _lastLoggedUni) {
-    Serial.printf("[ArtNet] Packet received — universe %d  (own patch: U%d Fix#%d)\n",
+    Serial.printf("[ArtNet] Packet received — universe %u  (own patch: U%d Addr%d)\n",
                   universe,
-                  artnetPatchCount > 0 ? artnetPatches[0].universe : -1,
-                  artnetPatchCount > 0 ? artnetPatches[0].fixID    : -1);
+                  artnetPatchCount > 0 ? (int)artnetPatches[0].universe  : -1,
+                  artnetPatchCount > 0 ? (int)artnetPatches[0].startAddr : -1);
     _lastLoggedUni = universe;
   }
 
@@ -174,21 +171,11 @@ static void artnet_parsePacket(uint8_t* data, size_t len) {
 void artnet_receiver_setup() {
   artnet_loadPatches();
 
-  // Every ESP handles ArtNet independently — keep only its own fixID's patch.
-  // There is no relay; each fixture is addressed directly by the ArtNet source.
-  {
-    int keep = 0;
-    for (int i = 0; i < artnetPatchCount; i++) {
-      if (artnetPatches[i].fixID == ownFixID)
-        artnetPatches[keep++] = artnetPatches[i];
-    }
-    artnetPatchCount = keep;
-    if (keep > 0)
-      Serial.printf("[ArtNet] Own patch: Fix#%d U%d Addr%d\n",
-        artnetPatches[0].fixID, artnetPatches[0].universe, artnetPatches[0].startAddr);
-    else
-      Serial.println("[ArtNet] No patch for own fixID yet");
-  }
+  if (artnetPatchCount > 0)
+    Serial.printf("[ArtNet] Own patch: U%d Addr%d\n",
+      artnetPatches[0].universe, artnetPatches[0].startAddr);
+  else
+    Serial.println("[ArtNet] No patch configured yet");
 
   if (_artnetUdp.begin(ARTNET_PORT)) {
     Serial.printf("[ArtNet] Listening on port %d\n", ARTNET_PORT);

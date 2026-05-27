@@ -65,14 +65,9 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   var DMX_FP = 7;
   var an_patches = [], an_fixtures = [];
   var an_curUni = 0;
-  var FIX_HUES = [200,30,120,270,0,60,160,300,45,330];
-
-  function an_fixColor(fixID){
-    return 'hsl('+FIX_HUES[(fixID-1)%FIX_HUES.length]+',68%,52%)';
-  }
-  function an_fixColorDim(fixID){
-    return 'hsla('+FIX_HUES[(fixID-1)%FIX_HUES.length]+',68%,38%,0.35)';
-  }
+  // Own patch colour — single fixture per ESP, no fixID in patch any more.
+  var OWN_PATCH_COLOR     = 'hsl(200,68%,52%)';
+  var OWN_PATCH_COLOR_DIM = 'hsla(200,68%,38%,0.35)';
 
   function an_load(){
     Promise.all([
@@ -110,17 +105,17 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
       var p = slotMap[i];
       if(p){
         if(i === p.startAddr){
-          cell.style.background = an_fixColor(p.fixID);
+          cell.style.background = OWN_PATCH_COLOR;
           cell.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;line-height:1.2;">'
-            + '<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.85);">'+p.fixID+'</span>'
+            + '<span style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.85);">OWN</span>'
             + '<span style="font-size:7px;font-weight:400;color:rgba(0,0,0,0.5);">'+i+'</span>'
             + '</div>';
-          cell.title = 'Fix#'+p.fixID+' \u2014 Addr '+i;
+          cell.title = 'Own patch \u2014 Addr '+i;
         } else {
           var relCh = i - p.startAddr + 1;
-          cell.style.background = an_fixColorDim(p.fixID);
+          cell.style.background = OWN_PATCH_COLOR_DIM;
           cell.innerHTML = '<span style="font-size:11px;color:rgba(255,255,255,0.7);">'+relCh+'</span>';
-          cell.title = 'Fix#'+p.fixID+' \u2014 Addr '+i+' (ch '+relCh+')';
+          cell.title = 'Own patch \u2014 Addr '+i+' (ch '+relCh+')';
         }
       } else {
         cell.innerHTML = '<span style="font-size:9px;opacity:0.25;color:#fff;">'+i+'</span>';
@@ -155,11 +150,11 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     });
   }
 
-  window.an_updatePatch=function(fixID, uni, addr){
-    var p=an_patches.find(function(x){return x.fixID===fixID;});
+  window.an_updatePatch=function(uni, addr){
+    var p=an_patches[0];
     if(!p) return;
     var data={universe:uni!==null?uni:p.universe, startAddr:addr!==null?addr:p.startAddr};
-    fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},
+    fetch('/api/artnet/patch/own',{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(data)
     }).then(function(r){return r.json();}).then(function(d){
       if(d.status==='ok'){
@@ -171,9 +166,9 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
     });
   };
 
-  window.an_del=function(e,fixID){
+  window.an_del=function(e){
     if(e) e.stopPropagation();
-    fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){
+    fetch('/api/artnet/patch/own',{method:'DELETE'}).then(function(){
       if(typeof toast==='function') toast('Patch removed');
       an_load();
     });

@@ -8,7 +8,7 @@
 *.FCBak
 
 # Firmware credentials — copy config.example.h → config.h and fill in your own
-Firmware/nano_moving_light_modular_v2/main/config.h
+Firmware/**/config.h
 
 # PyInstaller build artifacts
 PC APP/build/
@@ -16,11 +16,12 @@ PC APP/dist/
 *.spec.bak
 
 # Python cache
-PC APP/__pycache__/
-PC APP/*.pyc
+**/__pycache__/
+**/*.pyc
 
 # Runtime data files
 PC APP/pc_data.json
+PC APP v2/data/
 
 # Old 3D model exports
 3d-models/Old Stepfiles/

@@ -447,59 +447,33 @@ def artnet_sniffer():
                 print("[artnet] stream started")
 
 def _artnet_apply_dmx():
-    """Read DMX values for each patched fixture and send commands. Called from artnet_sniffer."""
+    """Update the PC-side ArtNet status display from the live DMX stream.
+    Read-only — does NOT relay to ESPs.
+    Every ESP has its own ArtNet receiver on port 6454 and handles its own
+    patch directly; sending UDP commands on top would create a race condition."""
     with patches_lock:
         pat_copy = list(patches)
-    with fixtures_lock:
-        fix_copy = dict(fixtures)
-    with peers_lock:
-        peers_copy = dict(peers)
     with artnet_lock:
         dmx_copy = {u: bytes(b) for u, b in artnet_dmx.items()}
 
     patch_count = len(pat_copy)
-    # For global artnet_last display, aggregate first fixture
-    first = True
     for patch in pat_copy:
-        fid  = patch["fixID"]
         uni  = patch["universe"]
         addr = patch["startAddr"] - 1  # 0-indexed
         dmx  = dmx_copy.get(uni, b"")
         if len(dmx) < addr + 7:
             continue
-        master = dmx[addr]          # CH_MASTER (0) — scales R/G/B/W
-        r   = dmx[addr+1] * master // 255   # CH_RED   (1)
-        g   = dmx[addr+2] * master // 255   # CH_GREEN (2)
-        b   = dmx[addr+3] * master // 255   # CH_BLUE  (3)
-        w   = dmx[addr+4] * master // 255   # CH_WHITE (4)
-        pan = round(dmx[addr+5] / 255 * 270)  # CH_PAN  (5)
-        tilt= round(dmx[addr+6] / 255 * 270)  # CH_TILT (6)
-        cmd = f"R:{r},G:{g},B:{b},W:{w},PAN:{pan},TILT:{tilt}"
-        if first:
-            with artnet_lock:
-                artnet_last.update(r=r, g=g, b=b, w=w, pan=pan, tilt=tilt,
-                                   master=master, patchCount=patch_count)
-            first = False
-        # Routing: try fixture MAC → peer fixID match → unicast all peers (avoids Fritz!Box broadcast block)
-        target_ip  = None
-        target_mac = None
-        fix = fix_copy.get(fid)
-        if fix and fix.get("mac") and fix["mac"] in peers_copy:
-            target_ip  = peers_copy[fix["mac"]]["ip"]
-            target_mac = fix["mac"]
-        if target_ip is None:
-            for mac, peer in peers_copy.items():
-                if mac != OWN_MAC and peer.get("fixID") == fid:
-                    target_ip  = peer["ip"]
-                    target_mac = mac
-                    break
-        if target_ip:
-            _send_udp_cmd(target_ip, cmd, target_mac)
-        else:
-            # No specific target known — unicast to every peer (safe even through Fritz!Box)
-            for mac, peer in peers_copy.items():
-                if mac != OWN_MAC:
-                    _send_udp_cmd(peer["ip"], cmd, mac)
+        master = dmx[addr]
+        r   = dmx[addr+1] * master // 255
+        g   = dmx[addr+2] * master // 255
+        b   = dmx[addr+3] * master // 255
+        w   = dmx[addr+4] * master // 255
+        pan = round(dmx[addr+5] / 255 * 270)
+        tilt= round(dmx[addr+6] / 255 * 270)
+        with artnet_lock:
+            artnet_last.update(r=r, g=g, b=b, w=w, pan=pan, tilt=tilt,
+                               master=master, patchCount=patch_count)
+        break  # first matching patch is enough for display
 
 # ── Flask App ──────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder=None)

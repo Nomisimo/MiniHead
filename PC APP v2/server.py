@@ -439,17 +439,18 @@ def _artnet_apply_dmx():
         dmx  = dmx_copy.get(uni, b"")
         if len(dmx) < addr + 7:
             continue
-        r   = dmx[addr]
-        g   = dmx[addr+1]
-        b   = dmx[addr+2]
-        w   = dmx[addr+3]
-        pan = round(dmx[addr+4] / 255 * 270)
-        tilt= round(dmx[addr+5] / 255 * 270)
-        # master = dmx[addr+6]  # could dim all channels
+        master = dmx[addr]          # CH_MASTER (0) — scales R/G/B/W
+        r   = dmx[addr+1] * master // 255   # CH_RED   (1)
+        g   = dmx[addr+2] * master // 255   # CH_GREEN (2)
+        b   = dmx[addr+3] * master // 255   # CH_BLUE  (3)
+        w   = dmx[addr+4] * master // 255   # CH_WHITE (4)
+        pan = round(dmx[addr+5] / 255 * 270)  # CH_PAN  (5)
+        tilt= round(dmx[addr+6] / 255 * 270)  # CH_TILT (6)
         cmd = f"R:{r},G:{g},B:{b},W:{w},PAN:{pan},TILT:{tilt}"
         if first:
             with artnet_lock:
-                artnet_last.update(r=r, g=g, b=b, w=w, pan=pan, tilt=tilt, patchCount=patch_count)
+                artnet_last.update(r=r, g=g, b=b, w=w, pan=pan, tilt=tilt,
+                                   master=master, patchCount=patch_count)
             first = False
         # Routing: try fixture MAC → peer fixID match → unicast all peers (avoids Fritz!Box broadcast block)
         target_ip  = None

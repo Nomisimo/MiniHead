@@ -40,9 +40,13 @@ void setLED(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
 }
 
 // ── Servo smoothing ───────────────────────────────────────────────
-// setPan / setTilt write to a TARGET; core_loop moves toward it at a
-// fixed slew rate (200°/s).  This decouples servo motion from ArtNet
-// packet timing jitter — irregular UDP spacing no longer causes jerks.
+// setPan / setTilt write to a TARGET; core_loop exponentially smooths
+// toward it at 50 Hz.  Same technique as professional fixtures:
+//   next = current + SMOOTH × (target − current)
+// Natural ease-out: fast when far, slow on approach. Also absorbs
+// ArtNet packet timing jitter — irregular UDP gaps no longer cause jerks.
+// Tune SERVO_SMOOTH: 0.05 = very slow/silky, 0.3 = snappy.
+#define SERVO_SMOOTH 0.12f
 static float _tgtPan  = 90.0f, _tgtTilt  = 90.0f;
 static float _curPanF = 90.0f, _curTiltF = 90.0f;
 
@@ -143,12 +147,9 @@ void core_loop() {
   {
     unsigned long now = millis();
     if (now - _lastServoMs >= 20) {
-      float dt = (now - _lastServoMs) / 1000.0f;
       _lastServoMs = now;
-      const float SLEW = 200.0f;   // °/s — raise for snappier, lower for smoother
-      float maxStep = SLEW * dt;
-      _curPanF  += constrain(_tgtPan  - _curPanF,  -maxStep, maxStep);
-      _curTiltF += constrain(_tgtTilt - _curTiltF, -maxStep, maxStep);
+      _curPanF  += SERVO_SMOOTH * (_tgtPan  - _curPanF);
+      _curTiltF += SERVO_SMOOTH * (_tgtTilt - _curTiltF);
       servoPan.writeMicroseconds(map((int)_curPanF,  0, 270, 500, 2500));
       servoTilt.writeMicroseconds(map((int)_curTiltF, 0, 270, 500, 2500));
     }

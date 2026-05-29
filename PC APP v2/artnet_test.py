@@ -240,6 +240,10 @@ def sender():
             uni = target["universe"]
             pkt = build_artdmx(uni, payload)
             try:
+                # Send twice — WiFi bridges (Fritz!Box etc.) drop ~40% of
+                # high-rate UDP unicast. Redundant packets restore smooth delivery.
+                # Art-Net receivers use the sequence number to discard duplicates.
+                sock.sendto(pkt, (target["ip"], ARTNET_PORT))
                 sock.sendto(pkt, (target["ip"], ARTNET_PORT))
                 pkt_count  += 1
                 dmx_last_sent = payload

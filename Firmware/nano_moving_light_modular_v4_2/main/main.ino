@@ -114,6 +114,11 @@ void setup() {
 
   wifi_connectMulti();      // blocks until connected
 
+  // Disable WiFi modem sleep — without this the radio powers down between
+  // beacon intervals and drops ~60% of incoming UDP packets (ArtNet etc.).
+  WiFi.setSleep(false);
+  Serial.println("[WiFi] Modem sleep disabled (low-latency UDP mode)");
+
   for (int i = 0; i < _pluginCount; i++)
     _plugins[i].setup();
 }

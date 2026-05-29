@@ -191,6 +191,20 @@ void artnet_receiver_loop() {
     int n = _artnetUdp.read(buf, sizeof(buf));
     if (n > 0) artnet_parsePacket(buf, (size_t)n);
   }
+
+  // ── Packet rate monitor — logs once per second ────────────────
+  static unsigned long _rateWindowStart = 0;
+  static uint32_t      _rateCount       = 0;
+  if (sz > 0) _rateCount++;
+  {
+    unsigned long now = millis();
+    if (now - _rateWindowStart >= 1000) {
+      if (logCfg.artnetEvents)
+        Serial.printf("[ArtNet] %u pkt/s\n", _rateCount);
+      _rateCount       = 0;
+      _rateWindowStart = now;
+    }
+  }
   if (artnetActive && (millis() - artnetLastPacket > ARTNET_TIMEOUT_MS)) {
     artnetActive  = false;
     _artnetHadPre = false;   // reset so next session saves a fresh pre-state

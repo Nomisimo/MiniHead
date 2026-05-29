@@ -31,13 +31,23 @@ static uint8_t _preRainbowR = 0, _preRainbowG = 0, _preRainbowB = 0, _preRainbow
 // ── Hardware output ───────────────────────────────────────────────
 
 void setLED(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
+  // Skip show() if nothing changed — NeoPixel show() briefly disables
+  // interrupts; calling it 44×/s at identical values wastes CPU and adds jitter.
+  if (r==curR && g==curG && b==curB && w==curW) return;
   strip.setPixelColor(0, strip.Color(r, g, b, w));
   strip.show();
   curR=r; curG=g; curB=b; curW=w;
 }
 
-void setPan(int a)  { a = constrain(a,0,270); servoPan.writeMicroseconds(map(a,0,270,500,2500));  curPan  = a; }
-void setTilt(int a) { a = constrain(a,0,270); servoTilt.writeMicroseconds(map(a,0,270,500,2500)); curTilt = a; }
+// ── Servo smoothing ───────────────────────────────────────────────
+// setPan / setTilt write to a TARGET; core_loop moves toward it at a
+// fixed slew rate (200°/s).  This decouples servo motion from ArtNet
+// packet timing jitter — irregular UDP spacing no longer causes jerks.
+static float _tgtPan  = 90.0f, _tgtTilt  = 90.0f;
+static float _curPanF = 90.0f, _curTiltF = 90.0f;
+
+void setPan(int a)  { _tgtPan  = constrain(a, 0, 270); curPan  = a; }
+void setTilt(int a) { _tgtTilt = constrain(a, 0, 270); curTilt = a; }
 
 void hueToRGB(uint8_t hue, uint8_t &r, uint8_t &g, uint8_t &b) {
   uint8_t s=hue/43, o=(hue%43)*6;
@@ -106,6 +116,8 @@ void core_setup() {
   ESP32PWM::allocateTimer(0); ESP32PWM::allocateTimer(1);
   servoPan.setPeriodHertz(50);  servoPan.attach(SERVO_PAN_PIN, 500, 2500);
   servoTilt.setPeriodHertz(50); servoTilt.attach(SERVO_TIL_PIN, 500, 2500);
+  _tgtPan = _curPanF = 135.0f;
+  _tgtTilt = _curTiltF = 135.0f;
   setPan(135); setTilt(135);
 
   Serial.println("[Core] LED + Servos ready");
@@ -122,6 +134,23 @@ void core_loop() {
       buf = "";
     } else if (c != '\r') {
       buf += c;
+    }
+  }
+
+  // Servo smoothing — runs at 50 Hz, slew rate 200°/s (4°/step)
+  // Decouples motion from ArtNet packet jitter.
+  static unsigned long _lastServoMs = 0;
+  {
+    unsigned long now = millis();
+    if (now - _lastServoMs >= 20) {
+      float dt = (now - _lastServoMs) / 1000.0f;
+      _lastServoMs = now;
+      const float SLEW = 200.0f;   // °/s — raise for snappier, lower for smoother
+      float maxStep = SLEW * dt;
+      _curPanF  += constrain(_tgtPan  - _curPanF,  -maxStep, maxStep);
+      _curTiltF += constrain(_tgtTilt - _curTiltF, -maxStep, maxStep);
+      servoPan.writeMicroseconds(map((int)_curPanF,  0, 270, 500, 2500));
+      servoTilt.writeMicroseconds(map((int)_curTiltF, 0, 270, 500, 2500));
     }
   }
 

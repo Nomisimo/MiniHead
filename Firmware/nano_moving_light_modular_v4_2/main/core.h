@@ -150,8 +150,13 @@ void core_loop() {
       _lastServoMs = now;
       _curPanF  += SERVO_SMOOTH * (_tgtPan  - _curPanF);
       _curTiltF += SERVO_SMOOTH * (_tgtTilt - _curTiltF);
-      servoPan.writeMicroseconds(map((int)_curPanF,  0, 270, 500, 2500));
-      servoTilt.writeMicroseconds(map((int)_curTiltF, 0, 270, 500, 2500));
+      // Only write PWM when position actually changed — avoids constant
+      // micro-corrections that keep the motor energised and hot.
+      static int _lastPanUs = -1, _lastTiltUs = -1;
+      int panUs  = map((int)_curPanF,  0, 270, 500, 2500);
+      int tiltUs = map((int)_curTiltF, 0, 270, 500, 2500);
+      if (panUs  != _lastPanUs)  { servoPan.writeMicroseconds(panUs);   _lastPanUs  = panUs;  }
+      if (tiltUs != _lastTiltUs) { servoTilt.writeMicroseconds(tiltUs); _lastTiltUs = tiltUs; }
     }
   }
 

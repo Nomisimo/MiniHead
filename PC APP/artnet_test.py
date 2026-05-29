@@ -43,7 +43,7 @@ for _i, _a in enumerate(sys.argv):
     if _a == "--bind" and _i + 1 < len(sys.argv):
         BIND_IP = sys.argv[_i + 1]
 ARTNET_PORT = 6454
-SEND_RATE   = 40      # packets/s
+SEND_RATE   = 44      # packets/s  (Art-Net spec max ≤44 Hz)
 UI_PORT     = 8765
 
 # ── Broadcast warning ──────────────────────────────────────────────
@@ -152,7 +152,7 @@ def demo_tick(t: float):
 
 def rainbow_tick(dt: float):
     global rainbow_hue
-    rainbow_hue = (rainbow_hue + dt * 120) % 360   # full cycle ~3s
+    rainbow_hue = (rainbow_hue + dt * 36) % 360    # full cycle ~10s — smooth at 44 Hz
     r, g, b = hue_to_rgb(rainbow_hue)
     with lock:
         dmx[base()+CH_MASTER] = 255
@@ -211,9 +211,10 @@ def sender():
         except Exception as e:
             pass   # non-fatal — OS picks interface
 
-    tick     = 1.0 / SEND_RATE   # how often we CHECK for changes (40Hz)
-    prev_t   = time.time()
-    last_sent_t = 0.0            # timestamp of last transmitted packet
+    tick        = 1.0 / SEND_RATE   # target period (44 Hz → ~22.7 ms)
+    prev_t      = time.time()
+    last_sent_t = 0.0
+    deadline    = prev_t + tick      # deadline-based timing — no drift accumulation
 
     while running:
         t0 = time.time()
@@ -246,8 +247,13 @@ def sender():
             except Exception as e:
                 pass   # sendto rarely fails on UDP; errors show as pkt_count stalling
 
-        elapsed = time.time() - t0
-        time.sleep(max(0, tick - elapsed))
+        # Deadline-based sleep: catch up if we overslept, never accumulate lag
+        deadline += tick
+        now = time.time()
+        if deadline > now:
+            time.sleep(deadline - now)
+        else:
+            deadline = now  # fell behind — reset, don't try to catch up
     sock.close()
 
 # ── Flask app ─────────────────────────────────────────────────────

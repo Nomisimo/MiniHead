@@ -231,7 +231,14 @@ void fireCueToTargets(const Cue& c) {
 
 void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
 
-void handleStatus(AsyncWebServerRequest* req)     { sendJson(req, 200, "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\""+WiFi.localIP().toString()+"\"}"); }
+void handleStatus(AsyncWebServerRequest* req) {
+  String json = "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\"" + WiFi.localIP().toString() + "\""
+              + ",\"rainbowActive\":"  + (rainbowActive ? "true" : "false")
+              + ",\"demoActive\":"     + (demoActive     ? "true" : "false")
+              + ",\"animSpeed\":"      + String(animSpeed, 2)
+              + "}";
+  sendJson(req, 200, json);
+}
 void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
 void handlePorts(AsyncWebServerRequest* req)      { sendJson(req, 200, "[{\"port\":\"WiFi\",\"description\":\"ESP32 @ "+WiFi.localIP().toString()+"\"}]"); }
 void handleConnect(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"status\":\"ok\",\"port\":\"WiFi\"}"); }
@@ -384,6 +391,35 @@ void handleRainbow(AsyncWebServerRequest* req) {
   applyCommand(cmd);
   udp_broadcastCommand(cmd.c_str());
   Serial.printf("[WiFi] Rainbow global %s\n", on ? "ON" : "OFF");
+  sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
+void handleDemo(AsyncWebServerRequest* req) {
+  JsonDocument doc;
+  deserializeJson(doc, _getBody(req));
+  bool on = doc["on"] | false;
+  String cmd = on ? "DEMO:1" : "DEMO:0";
+  applyCommand(cmd);
+  udp_broadcastCommand(cmd.c_str());
+  Serial.printf("[WiFi] Demo global %s\n", on ? "ON" : "OFF");
+  sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
+void handleAnimSpeed(AsyncWebServerRequest* req) {
+  JsonDocument doc;
+  deserializeJson(doc, _getBody(req));
+  float s = doc["speed"] | 1.0f;
+  s = constrain(s, 0.1f, 3.0f);
+  String cmd = "SPEED:" + String(s, 2);
+  applyCommand(cmd);
+  udp_broadcastCommand(cmd.c_str());
+  sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
+void handleBlackout(AsyncWebServerRequest* req) {
+  applyCommand("BLACKOUT");
+  udp_broadcastCommand("BLACKOUT");
+  Serial.println("[WiFi] Blackout");
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
@@ -609,9 +645,17 @@ void setupRoutes() {
   server.on("/api/send",      HTTP_POST,
     [](AsyncWebServerRequest* r){ handleSend(r); },
     nullptr, _bodyAccumulator);
-  server.on("/api/rainbow",   HTTP_POST,
+  server.on("/api/rainbow",          HTTP_POST,
     [](AsyncWebServerRequest* r){ handleRainbow(r); },
     nullptr, _bodyAccumulator);
+  server.on("/api/demo",             HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleDemo(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/animation/speed",  HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleAnimSpeed(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/blackout",         HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleBlackout(r); });
 
   // ── Cues — /reorder must come before /* ───────────────────────
   server.on("/api/cues",         HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetCues(r); });

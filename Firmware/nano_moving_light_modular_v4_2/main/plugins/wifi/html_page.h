@@ -169,9 +169,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     </div>
   </div>
 
-  <!-- Rainbow — broadcasts to ALL heads -->
+  <!-- Animations & Blackout — all run locally on ESP, no ArtNet needed -->
   <div class="panel area-rainbow col-right">
     <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
+    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">◈ DEMO // ALL HEADS</button>
+    <button class="btn" id="blackoutBtn" onclick="blackout()" style="margin-top:6px;width:100%;color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">BLACKOUT</button>
+    <div class="motion-row" style="margin-top:10px;">
+      <div class="motion-label" style="min-width:54px;font-size:10px;">SPEED</div>
+      <input type="range" class="horizontal" min="10" max="300" value="100" step="5" id="fSpeed" oninput="onSpeed()">
+      <span id="vSpeed" style="font-family:var(--mono);font-size:11px;color:var(--accent2);min-width:36px;text-align:right;">1.0×</span>
+    </div>
   </div>
 
   <!-- Serial -->
@@ -204,8 +211,17 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 </div>
 
 <script>
-var rainbowActive=false,seqSelectedIds=[],sendTimer=null,_editCueId=null,_cDragId=null;
-fetch('/api/status').then(function(r){return r.json();}).then(function(d){if(d.ip)document.getElementById('ipLabel').textContent=d.ip;});
+var rainbowActive=false,demoActive=false,seqSelectedIds=[],sendTimer=null,speedTimer=null,_editCueId=null,_cDragId=null;
+fetch('/api/status').then(function(r){return r.json();}).then(function(d){
+  if(d.ip) document.getElementById('ipLabel').textContent=d.ip;
+  if(d.rainbowActive){ rainbowActive=true; document.getElementById('rainbowBtn').classList.add('active'); }
+  if(d.demoActive){    demoActive=true;    document.getElementById('demoBtn').classList.add('active'); }
+  if(d.animSpeed){
+    var sv=Math.round(d.animSpeed*100);
+    document.getElementById('fSpeed').value=sv;
+    document.getElementById('vSpeed').textContent=(d.animSpeed).toFixed(1)+'×';
+  }
+});
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
 function updatePreview(){var v=getValues(),wr=Math.min(255,v.r+v.w),wg=Math.min(255,v.g+v.w),wb=Math.min(255,v.b+v.w),p=document.getElementById('ledPreview'),hex='rgb('+wr+','+wg+','+wb+')',br=(wr+wg+wb)/3;p.style.background=hex;p.style.boxShadow=br>10?'0 0 '+(20+br/4)+'px '+(8+br/8)+'px '+hex:'none';}
@@ -216,10 +232,32 @@ function sendCurrent(){var v=getValues();var cmd='R:'+v.r+',G:'+v.g+',B:'+v.b+',
 function sendCommand(cmd){fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});}
 function toggleRainbow(){
   rainbowActive=!rainbowActive;
+  if(rainbowActive){ demoActive=false; document.getElementById('demoBtn').classList.remove('active'); }
   document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);
-  // POST to /api/rainbow — leader applies locally + broadcasts to all followers
   fetch('/api/rainbow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:rainbowActive})});
   toast(rainbowActive?'Rainbow ON \u2014 all heads':'Rainbow OFF');
+}
+function toggleDemo(){
+  demoActive=!demoActive;
+  if(demoActive){ rainbowActive=false; document.getElementById('rainbowBtn').classList.remove('active'); }
+  document.getElementById('demoBtn').classList.toggle('active',demoActive);
+  fetch('/api/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:demoActive})});
+  toast(demoActive?'Demo ON \u2014 all heads':'Demo OFF');
+}
+function blackout(){
+  rainbowActive=false; demoActive=false;
+  document.getElementById('rainbowBtn').classList.remove('active');
+  document.getElementById('demoBtn').classList.remove('active');
+  fetch('/api/blackout',{method:'POST'});
+  toast('Blackout');
+}
+function onSpeed(){
+  var val=+document.getElementById('fSpeed').value;
+  document.getElementById('vSpeed').textContent=(val/100).toFixed(1)+'x';
+  clearTimeout(speedTimer);
+  speedTimer=setTimeout(function(){
+    fetch('/api/animation/speed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speed:val/100})});
+  },40);
 }
 function loadCues(){fetch('/api/cues').then(function(r){return r.json();}).then(renderCues);}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}

@@ -102,12 +102,11 @@ static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* da
       pM=master; pR=r; pG=g; pB=b; pW=w; pPan=pan; pTilt=tilt;
     }
 
-    // ArtNet is pure DMX delivery — it does not own local effect modes.
-    // If rainbow is running, ArtNet still drives the servos but does not
-    // write to the LED; the rainbow loop already owns the strip.
-    if (!rainbowActive) setLED(r, g, b, w);
-    setPan(pan);
-    setTilt(tilt);
+    // Local animations (rainbow / demo) take priority over incoming ArtNet.
+    // When a standalone effect is active the ESP ignores ArtNet values so
+    // the show can run without a lighting console attached.
+    if (!rainbowActive && !demoActive) setLED(r, g, b, w);
+    if (!demoActive) { setPan(pan); setTilt(tilt); }
     return true;   // matched — artnet_onDmxFrame will set artnetActive
   }
   return false;    // no patch matched this universe → artnetActive unchanged

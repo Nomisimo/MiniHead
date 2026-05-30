@@ -4,12 +4,13 @@
 #include "plugins/storage/storage.h"
 
 // ── Core Module ───────────────────────────────────────────────────
-// Handles: RGBW LED output, Servo Pan/Tilt, Rainbow effect,
+// Handles: RGBW LED output, Servo Pan/Tilt, Rainbow/Demo effects,
 //          command parser, serial input
 // ─────────────────────────────────────────────────────────────────
 
 #include <Adafruit_NeoPixel.h>
 #include <ESP32Servo.h>
+#include <math.h>
 
 #define LED_PIN       8
 #define LED_COUNT     1
@@ -27,6 +28,14 @@ bool rainbowActive = false;
 uint8_t rainbowHue = 0;
 unsigned long lastRainbowStep = 0;
 static uint8_t _preRainbowR = 0, _preRainbowG = 0, _preRainbowB = 0, _preRainbowW = 0;
+static float _rainbowHueF = 0.0f;  // float accumulator so animSpeed < 1.0 works
+
+// ── Standalone animations ─────────────────────────────────────────
+// Demo: sinusoidal pan+tilt+color — port of artnet_test.py demo_tick()
+// Speed: shared rate multiplier for rainbow and demo (0.1 = slow, 3.0 = fast)
+bool  demoActive = false;
+float demoT      = 0.0f;   // elapsed seconds — drives all sin() math
+float animSpeed  = 1.0f;   // 0.1–3.0; scales advance rate of all animations
 
 // ── Hardware output ───────────────────────────────────────────────
 
@@ -71,12 +80,33 @@ void applyCommand(const String& cmd) {
   if (cmd.startsWith("RAINBOW:")) {
     bool newState = (cmd.substring(8).toInt() == 1);
     if (newState && !rainbowActive) {
-      // Save current color before starting rainbow
       _preRainbowR = curR; _preRainbowG = curG; _preRainbowB = curB; _preRainbowW = curW;
     }
+    demoActive    = false;          // rainbow and demo are mutually exclusive
     rainbowActive = newState;
-    rainbowHue = 0;
+    rainbowHue = 0; _rainbowHueF = 0.0f;
     if (!rainbowActive) setLED(_preRainbowR, _preRainbowG, _preRainbowB, _preRainbowW);
+    return;
+  }
+
+  if (cmd.startsWith("DEMO:")) {
+    bool newState = (cmd.substring(5).toInt() == 1);
+    rainbowActive = false;          // mutually exclusive with rainbow
+    demoActive    = newState;
+    if (!newState) demoT = 0.0f;    // reset phase so next start is fresh
+    return;
+  }
+
+  if (cmd.startsWith("SPEED:")) {
+    animSpeed = constrain(cmd.substring(6).toFloat(), 0.1f, 3.0f);
+    return;
+  }
+
+  if (cmd == "BLACKOUT") {
+    rainbowActive = false;
+    demoActive    = false;
+    demoT         = 0.0f;
+    setLED(0, 0, 0, 0);            // LED off — servos keep their current position
     return;
   }
 
@@ -105,6 +135,7 @@ void applyCommand(const String& cmd) {
   // so calling setLED(curR,curG,curB,curW) here would write (0,0,0,0) and black out the LED.
   if (hasColor) {
     rainbowActive = false;
+    demoActive    = false;          // explicit color command overrides all animations
     setLED(r,g,b,w);
   }
   setPan(pan); setTilt(tilt);
@@ -160,14 +191,31 @@ void core_loop() {
     }
   }
 
-  // Rainbow effect
+  // Rainbow effect (color only, no motion)
   if (rainbowActive) {
     unsigned long now = millis();
     if (now - lastRainbowStep >= 20) {
       lastRainbowStep = now;
+      _rainbowHueF += animSpeed;           // float accumulator handles speed < 1
+      rainbowHue = (uint8_t)_rainbowHueF;
       uint8_t r,g,b; hueToRGB(rainbowHue, r, g, b);
       strip.setPixelColor(0, strip.Color(r,g,b,0)); strip.show();
-      rainbowHue++;
+    }
+  }
+
+  // Demo effect — sinusoidal color + pan/tilt (port of artnet_test.py demo_tick)
+  if (demoActive) {
+    unsigned long now = millis();
+    if (now - lastRainbowStep >= 20) {     // shares the same 20ms timer
+      lastRainbowStep = now;
+      demoT += 0.02f * animSpeed;          // advance elapsed time at speed-scaled rate
+      uint8_t r, g, b;
+      hueToRGB((uint8_t)(demoT * 42.67f), r, g, b);
+      setLED(r, g, b, 0);
+      float panDmx  = 127.0f + 127.0f * sinf(demoT * 0.5f);
+      float tiltDmx = 127.0f + 100.0f * sinf(demoT * 0.3f + 1.0f);
+      setPan( (int)(panDmx  / 255.0f * 270.0f));
+      setTilt((int)(tiltDmx / 255.0f * 270.0f));
     }
   }
 }

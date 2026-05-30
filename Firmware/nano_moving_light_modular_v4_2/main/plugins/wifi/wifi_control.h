@@ -705,17 +705,18 @@ void setupRoutes() {
 
 void wifi_control_setup() {
 #ifdef PLUGIN_ARTNET
-  // Art-Net mode: start a minimal HTTP server for config endpoints only.
-  // PC App is always leader — no cues, no full API, just /api/config/*.
-  _serverActive = false;
+  // Art-Net mode: start the FULL HTTP server so the web UI is accessible
+  // for standalone operation (Demo, Blackout, Speed, cues) without a PC App.
+  // ArtNet reception runs independently on UDP port 6454 — no conflict.
+  _serverActive = true;
   logcfg_load();
   setupConfigRoutes();
-  server.onNotFound([](AsyncWebServerRequest* req) { requireLeader(req); });
+  setupRoutes();
   if (!_serverStarted) {
     server.begin();
     _serverStarted = true;
   }
-  Serial.println("[WiFi] Art-Net mode — config HTTP server :80");
+  Serial.println("[WiFi] Art-Net mode — full HTTP server :80");
   return;
 #endif
   _serverActive = true;

@@ -359,7 +359,6 @@ def beacon_receiver():
 def http_keepalive():
     """Poll /api/status on each peer every KEEPALIVE_INT seconds to keep them alive
     through Fritz!Box WiFi→Ethernet UDP blocking."""
-    import urllib.request
     while True:
         time.sleep(KEEPALIVE_INT)
         with peers_lock:
@@ -473,7 +472,7 @@ def _artnet_apply_dmx():
         tilt= round(dmx[addr+6] / 255 * 270)
         with artnet_lock:
             artnet_last.update(r=r, g=g, b=b, w=w, pan=pan, tilt=tilt,
-                               master=master, patchCount=patch_count)
+                               master=master)
         break  # first matching patch is enough for display
 
 # ── Flask App ──────────────────────────────────────────────────────────────
@@ -556,7 +555,6 @@ def api_head_set_fixid(mac):
         ip = peers.get(mac, {}).get("ip")
     if ip:
         try:
-            import urllib.request
             url = f"http://{ip}/api/config/fixid"
             req = urllib.request.Request(url,
                 data=json.dumps({"fixID": new_id}).encode(),
@@ -878,16 +876,15 @@ def api_esp_logconfig():
     # Push to all ESPs
     with peers_lock:
         peer_list = [(m, p["ip"]) for m, p in peers.items() if m != OWN_MAC]
-    import urllib.request as ureq
     with flags_lock:
         payload = json.dumps(dict(log_flags)).encode()
     for mac, ip in peer_list:
         try:
             url = f"http://{ip}/api/logconfig"
-            req = ureq.Request(url, data=payload,
+            req = urllib.request.Request(url, data=payload,
                                headers={"Content-Type": "application/json"},
                                method="POST")
-            ureq.urlopen(req, timeout=3).read()
+            urllib.request.urlopen(req, timeout=3).read()
         except Exception as e:
             print(f"[logconfig push] {mac} {ip}: {e}")
     return jsonify({"status": "ok"})

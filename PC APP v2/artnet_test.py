@@ -21,12 +21,10 @@ Terminal keys (also work while browser is open):
   f       full white
   h       highlight
   n       rainbow toggle
-  s       snapshot
 """
 
 import socket, struct, sys, time, threading, math, os
-import sys as _sys
-if _sys.platform == 'win32':
+if sys.platform == 'win32':
     import msvcrt as _msvcrt
 else:
     import termios, tty
@@ -93,11 +91,11 @@ pkt_count    = 0
 last_send_reason = "—"   # "change" or "heartbeat"
 demo_mode    = False
 rainbow_mode = False
+mode_lock    = threading.Lock()   # guards demo_mode, rainbow_mode, running
 rainbow_hue  = 0.0
 demo_t       = 0.0
 running      = True
 lock         = threading.Lock()
-snapshots    = []
 
 # Target is mutable (browser can change it)
 target = {"ip": TARGET_IP, "universe": UNIVERSE, "startAddr": START_ADDR}
@@ -164,13 +162,15 @@ def rainbow_tick(dt: float):
 # ── Named commands ────────────────────────────────────────────────
 def cmd_blackout():
     global demo_mode, rainbow_mode
-    demo_mode = rainbow_mode = False
+    with mode_lock:
+        demo_mode = rainbow_mode = False
     with lock:
         for i in range(DMX_FP): dmx[base() + i] = 0
 
 def cmd_full():
     global demo_mode, rainbow_mode
-    demo_mode = rainbow_mode = False
+    with mode_lock:
+        demo_mode = rainbow_mode = False
     with lock:
         dmx[base()+CH_MASTER] = 255
         dmx[base()+CH_RED]    = 0
@@ -180,7 +180,8 @@ def cmd_full():
 
 def cmd_highlight():
     global demo_mode, rainbow_mode
-    demo_mode = rainbow_mode = False
+    with mode_lock:
+        demo_mode = rainbow_mode = False
     with lock:
         dmx[base()+CH_MASTER] = 255
         dmx[base()+CH_RED]    = 255
@@ -222,10 +223,12 @@ def sender():
         prev_t = t0
 
         # Advance animations
-        if demo_mode:
+        with mode_lock:
+            _demo = demo_mode; _rainbow = rainbow_mode
+        if _demo:
             demo_t += dt
             demo_tick(demo_t)
-        elif rainbow_mode:
+        elif _rainbow:
             rainbow_tick(dt)
 
         with lock:
@@ -767,10 +770,14 @@ def api_command():
     elif cmd == "full":       cmd_full()
     elif cmd == "highlight":  cmd_highlight()
     elif cmd == "center":     cmd_center()
-    elif cmd == "rainbow_on":  demo_mode = False;  rainbow_mode = True
-    elif cmd == "rainbow_off": rainbow_mode = False
-    elif cmd == "demo_on":     rainbow_mode = False; demo_mode = True
-    elif cmd == "demo_off":    demo_mode = False
+    elif cmd == "rainbow_on":
+        with mode_lock: demo_mode = False; rainbow_mode = True
+    elif cmd == "rainbow_off":
+        with mode_lock: rainbow_mode = False
+    elif cmd == "demo_on":
+        with mode_lock: rainbow_mode = False; demo_mode = True
+    elif cmd == "demo_off":
+        with mode_lock: demo_mode = False
     return jsonify({"status": "ok"})
 
 @app.route("/api/target", methods=["POST"])
@@ -873,11 +880,6 @@ def input_loop():
             elif ch == 'P': dmx[b+CH_PAN]    = clamp(dmx[b+CH_PAN]-10)
             elif ch == 't': dmx[b+CH_TILT]   = clamp(dmx[b+CH_TILT]+10)
             elif ch == 'T': dmx[b+CH_TILT]   = clamp(dmx[b+CH_TILT]-10)
-            elif ch == 's':
-                snap = (f"M={dmx[b+CH_MASTER]} R={dmx[b+CH_RED]} G={dmx[b+CH_GREEN]} "
-                        f"B={dmx[b+CH_BLUE]} W={dmx[b+CH_WHITE]} "
-                        f"PAN={dmx[b+CH_PAN]} TILT={dmx[b+CH_TILT]}")
-                snapshots.append(snap)
 
 # ── Entry point ───────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -903,6 +905,6 @@ if __name__ == "__main__":
 
     # Blackout before exit
     with lock:
-        for i in range(DMX_FP): dmx[START_ADDR - 1 + i] = 0
+        for i in range(DMX_FP): dmx[base() + i] = 0  # use live target addr, not startup arg
     time.sleep(0.1)
     print("\n\033[?25h\033[0m")

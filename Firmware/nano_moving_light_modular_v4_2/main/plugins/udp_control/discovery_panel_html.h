@@ -174,10 +174,12 @@ const char DISCOVERY_PANEL_HTML[] PROGMEM = R"=====(
       });
       var now=Date.now()/1000;
       Object.keys(patchAcks).forEach(function(k){
-        var a=patchAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete patchAcks[k];
+        var a=patchAcks[k];
+        if((a.status==='ok'&&a.ts&&now-a.ts>5)||(a.status==='timeout'&&a.ts&&now-a.ts>10)) delete patchAcks[k];
       });
       Object.keys(nameAcks).forEach(function(k){
-        var a=nameAcks[k]; if(a.status==='ok'&&a.ts&&now-a.ts>5) delete nameAcks[k];
+        var a=nameAcks[k];
+        if((a.status==='ok'&&a.ts&&now-a.ts>5)||(a.status==='timeout'&&a.ts&&now-a.ts>10)) delete nameAcks[k];
       });
       nh_render();
     }).catch(function(){});

@@ -221,11 +221,11 @@ fetch('/api/status').then(function(r){return r.json();}).then(function(d){
     document.getElementById('fSpeed').value=sv;
     document.getElementById('vSpeed').textContent=(d.animSpeed).toFixed(1)+'×';
   }
-});
+}).catch(function(){ console.warn('Status fetch failed — device may be offline'); });
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
 function updatePreview(){var v=getValues(),wr=Math.min(255,v.r+v.w),wg=Math.min(255,v.g+v.w),wb=Math.min(255,v.b+v.w),p=document.getElementById('ledPreview'),hex='rgb('+wr+','+wg+','+wb+')',br=(wr+wg+wb)/3;p.style.background=hex;p.style.boxShadow=br>10?'0 0 '+(20+br/4)+'px '+(8+br/8)+'px '+hex:'none';}
-function onFader(){var v=getValues();document.getElementById('vR').value=v.r;document.getElementById('vG').value=v.g;document.getElementById('vB').value=v.b;document.getElementById('vW').value=v.w;updatePreview();debounceSend();}
+function onFader(){var v=getValues();document.getElementById('vR').value=v.r;document.getElementById('vG').value=v.g;document.getElementById('vB').value=v.b;document.getElementById('vW').value=v.w;updatePreview();if(rainbowActive||demoActive){rainbowActive=false;demoActive=false;document.getElementById('rainbowBtn').classList.remove('active');document.getElementById('demoBtn').classList.remove('active');toast('Animation stopped');}debounceSend();}
 function onMotion(){var v=getValues();document.getElementById('vPan').value=v.pan;document.getElementById('vTilt').value=v.tilt;debounceSend();}
 function debounceSend(){clearTimeout(sendTimer);sendTimer=setTimeout(sendCurrent,40);}
 function sendCurrent(){var v=getValues();var cmd='R:'+v.r+',G:'+v.g+',B:'+v.b+',W:'+v.w+',PAN:'+v.pan+',TILT:'+v.tilt;var macs=(typeof nh_getSelectedMACs==='function')?nh_getSelectedMACs():[];if(macs.length){fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd,targets:macs})});}else{sendCommand(cmd);}}
@@ -234,14 +234,14 @@ function toggleRainbow(){
   rainbowActive=!rainbowActive;
   if(rainbowActive){ demoActive=false; document.getElementById('demoBtn').classList.remove('active'); }
   document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);
-  fetch('/api/rainbow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:rainbowActive})});
+  fetch('/api/rainbow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:rainbowActive})}).catch(function(){rainbowActive=!rainbowActive;document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);toast('Rainbow: no response','err');});
   toast(rainbowActive?'Rainbow ON \u2014 all heads':'Rainbow OFF');
 }
 function toggleDemo(){
   demoActive=!demoActive;
   if(demoActive){ rainbowActive=false; document.getElementById('rainbowBtn').classList.remove('active'); }
   document.getElementById('demoBtn').classList.toggle('active',demoActive);
-  fetch('/api/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:demoActive})});
+  fetch('/api/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:demoActive})}).catch(function(){demoActive=!demoActive;document.getElementById('demoBtn').classList.toggle('active',demoActive);toast('Demo: no response','err');});
   toast(demoActive?'Demo ON \u2014 all heads':'Demo OFF');
 }
 function blackout(){

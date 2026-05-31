@@ -60,7 +60,10 @@ Peer* discovery_findPeer(const char* mac) {
 Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "") {
   Peer* p = discovery_findPeer(mac);
   if (!p) {
-    if (peerCount >= MAX_PEERS) return nullptr;
+    if (peerCount >= MAX_PEERS) {
+      Serial.printf("[Discovery] WARNING: peer table full (%d/%d) — %s ignored\n", peerCount, MAX_PEERS, mac);
+      return nullptr;
+    }
     p = &peers[peerCount++];
     strncpy(p->mac, mac, 17); p->mac[17] = 0;
     p->name[0] = 0;

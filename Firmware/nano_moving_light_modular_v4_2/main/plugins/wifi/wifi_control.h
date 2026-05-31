@@ -126,8 +126,8 @@ void loadCuesFromFlash() {
     c.g    = constrain((int)(o["g"]    | 0),  0, 255);
     c.b    = constrain((int)(o["b"]    | 0),  0, 255);
     c.w    = constrain((int)(o["w"]    | 0),  0, 255);
-    c.pan  = constrain((int)(o["pan"]  | 90), 0, 180);
-    c.tilt = constrain((int)(o["tilt"] | 90), 0, 180);
+    c.pan  = constrain((int)(o["pan"]  | 90), 0, 270);
+    c.tilt = constrain((int)(o["tilt"] | 90), 0, 270);
     c.targetCount = 0;
     for (JsonVariant v : o["fixTargets"].as<JsonArray>()) {
       if (c.targetCount >= MAX_TARGETS) break;
@@ -441,8 +441,8 @@ void handleSaveCue(AsyncWebServerRequest* req) {
   c.g    = constrain((int)doc["g"],    0, 255);
   c.b    = constrain((int)doc["b"],    0, 255);
   c.w    = constrain((int)doc["w"],    0, 255);
-  c.pan  = constrain((int)doc["pan"],  0, 180);
-  c.tilt = constrain((int)doc["tilt"], 0, 180);
+  c.pan  = constrain((int)doc["pan"],  0, 270);
+  c.tilt = constrain((int)doc["tilt"], 0, 270);
   c.targetCount = 0;
   JsonArray tArr = doc["fixTargets"].as<JsonArray>();
   if (!tArr.isNull()) {
@@ -744,6 +744,9 @@ void wifi_control_setup() {
 
 void wifi_control_stop() {
   _serverActive = false;
+  // Stop sequencer — if we lose leader role mid-sequence, don't resume
+  // in a corrupt state when we become leader again later.
+  seqRunning = false; seqIndex = 0; seqIdCount = 0;
   // AsyncWebServer has no stop() — socket stays bound on the WiFi task.
   // requireLeader() now redirects browsers to the actual leader's IP,
   // so a user navigating to this ESP's IP gets sent to the right place.

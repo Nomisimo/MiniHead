@@ -26,6 +26,5 @@ void discovery_saveName(const char* name) { strlcpy(ownName, name, sizeof(ownNam
 // No-op UDP senders (normally in udp_control/udp_commands.h)
 void udp_sendCommand(const char* ip, const char* mac, const char* cmd) {}
 void udp_broadcastCommand(const char* cmd) {}
-void udp_sendSetName(const char* ip, const char* mac, const char* name) {}
 void udp_sendIdentifyOn(const char* ip, const char* mac) {}
 void udp_sendIdentifyOff(const char* ip, const char* mac) {}

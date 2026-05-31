@@ -95,6 +95,8 @@ void applyCommand(const String& cmd) {
   if (cmd.startsWith("DEMO:")) {
     bool newState = (cmd.substring(5).toInt() == 1);
     rainbowActive = false;          // mutually exclusive with rainbow
+    // Reset hue accumulators so rainbow always starts from 0 after demo
+    rainbowHue = 0; _rainbowHueF = 0.0f;
     demoActive    = newState;
     if (!newState) demoT = 0.0f;    // reset phase so next start is fresh
     return;

@@ -55,7 +55,10 @@ void setLED(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
 // Natural ease-out: fast when far, slow on approach. Also absorbs
 // ArtNet packet timing jitter — irregular UDP gaps no longer cause jerks.
 // Tune SERVO_SMOOTH: 0.05 = very slow/silky, 0.3 = snappy.
-#define SERVO_SMOOTH 0.12f
+// SERVO_DEADBAND: stop smoothing once within this many degrees of target.
+// Prevents the motor hunting/oscillating around the target position.
+#define SERVO_SMOOTH    0.12f
+#define SERVO_DEADBAND  1.5f
 static float _tgtPan  = 90.0f, _tgtTilt  = 90.0f;
 static float _curPanF = 90.0f, _curTiltF = 90.0f;
 
@@ -179,8 +182,12 @@ void core_loop() {
     unsigned long now = millis();
     if (now - _lastServoMs >= 20) {
       _lastServoMs = now;
-      _curPanF  += SERVO_SMOOTH * (_tgtPan  - _curPanF);
-      _curTiltF += SERVO_SMOOTH * (_tgtTilt - _curTiltF);
+      // Only advance smoothing outside the deadband — prevents oscillation
+      // around the target when the motor lacks torque to close the last gap.
+      if (fabsf(_tgtPan  - _curPanF)  > SERVO_DEADBAND)
+        _curPanF  += SERVO_SMOOTH * (_tgtPan  - _curPanF);
+      if (fabsf(_tgtTilt - _curTiltF) > SERVO_DEADBAND)
+        _curTiltF += SERVO_SMOOTH * (_tgtTilt - _curTiltF);
       // Only write PWM when position actually changed — avoids constant
       // micro-corrections that keep the motor energised and hot.
       static int _lastPanUs = -1, _lastTiltUs = -1;

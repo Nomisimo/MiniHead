@@ -15,6 +15,7 @@
 // MUST be defined BEFORE the plugin #includes so that wifi_control.h
 // and discovery.h can read them at compile time.
 
+//#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
 #define PLUGIN_UDP_CONTROL
 #define PLUGIN_ARTNET
 //#define PLUGIN_PROFILER
@@ -40,7 +41,9 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // NOTE: startup_animation must come first (runs before WiFi is up).
 //       wifi must come after startup_animation.
 
-//#include "plugins/startup_animation/startup_animation.h"
+#ifdef PLUGIN_STARTUP_ANIMATION
+#include "plugins/startup_animation/startup_animation.h"
+#endif
 #include "plugins/wifi/wifi.h"                    // HTTP server, cues, sequencer
 
 #ifdef PLUGIN_UDP_CONTROL

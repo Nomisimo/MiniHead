@@ -210,14 +210,14 @@ void fireCueToTargets(const Cue& c) {
   bool toAll = (c.targetCount == 0) || (c.targetCount == 1 && c.fixTargets[0] == 0);
   Serial.printf("[Seq] Fire '%s': %s  toAll=%d\n", c.name, cmd.c_str(), (int)toAll);
   if (toAll) {
-    rainbowActive = false;
+    rainbowActive = false; demoActive = false;
     applyCommand(cmd);
     udp_broadcastCommand(cmd.c_str());
     return;
   }
   for (int t = 0; t < c.targetCount; t++) {
     int fid = c.fixTargets[t];
-    if (ownFixID > 0 && ownFixID == fid) { rainbowActive = false; applyCommand(cmd); }
+    if (ownFixID > 0 && ownFixID == fid) { rainbowActive = false; demoActive = false; applyCommand(cmd); }
     for (int i = 0; i < peerCount; i++) {
       if (peers[i].active && peers[i].fixID == fid) {
         udp_sendCommand(peers[i].ip, peers[i].mac, cmd.c_str());
@@ -364,13 +364,13 @@ void handleSend(AsyncWebServerRequest* req) {
   cmd.trim();
   JsonArray targets = doc["targets"].as<JsonArray>();
   if (targets.isNull() || targets.size() == 0) {
-    rainbowActive = false;
+    rainbowActive = false; demoActive = false;
     applyCommand(cmd);
   } else {
     for (JsonVariant t : targets) {
       String mac = t.as<String>();
-      if (mac == "*") { rainbowActive = false; applyCommand(cmd); udp_broadcastCommand(cmd.c_str()); break; }
-      else if (mac == String(ownMAC) || mac == "self") { rainbowActive = false; applyCommand(cmd); }
+      if (mac == "*") { rainbowActive = false; demoActive = false; applyCommand(cmd); udp_broadcastCommand(cmd.c_str()); break; }
+      else if (mac == String(ownMAC) || mac == "self") { rainbowActive = false; demoActive = false; applyCommand(cmd); }
       else {
         for (int i = 0; i < peerCount; i++) {
           if (peers[i].active && String(peers[i].mac) == mac) {
@@ -710,8 +710,7 @@ void wifi_control_setup() {
   // ArtNet reception runs independently on UDP port 6454 — no conflict.
   _serverActive = true;
   logcfg_load();
-  setupConfigRoutes();
-  setupRoutes();
+  setupRoutes();   // already calls setupConfigRoutes() internally
   if (!_serverStarted) {
     server.begin();
     _serverStarted = true;

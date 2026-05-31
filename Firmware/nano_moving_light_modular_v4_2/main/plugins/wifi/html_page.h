@@ -253,7 +253,7 @@ function blackout(){
 }
 function onSpeed(){
   var val=+document.getElementById('fSpeed').value;
-  document.getElementById('vSpeed').textContent=(val/100).toFixed(1)+'x';
+  document.getElementById('vSpeed').textContent=(val/100).toFixed(1)+'×';
   clearTimeout(speedTimer);
   speedTimer=setTimeout(function(){
     fetch('/api/animation/speed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speed:val/100})});

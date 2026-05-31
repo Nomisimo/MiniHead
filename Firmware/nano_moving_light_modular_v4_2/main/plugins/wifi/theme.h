@@ -51,6 +51,9 @@ input[type=range].horizontal::-webkit-slider-thumb{-webkit-appearance:none;width
 .rainbow-btn{width:100%;padding:14px;font-size:13px;letter-spacing:3px;background:linear-gradient(90deg,#ff000033,#ffff0033,#00ff0033,#00ffff33,#0000ff33,#ff00ff33);border:1px solid var(--border);color:var(--text);touch-action:manipulation;}
 .rainbow-btn.active{background:linear-gradient(90deg,#ff0000aa,#ffff00aa,#00ff00aa,#00ffffaa,#0000ffaa,#ff00ffaa);animation:rainbow-shift 2s linear infinite;color:#fff;border-color:transparent;}
 @keyframes rainbow-shift{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
+.demo-btn{width:100%;padding:14px;font-size:13px;letter-spacing:3px;background:linear-gradient(90deg,#00ffff22,#0066ff22,#cc00ff22,#00ffff22);border:1px solid var(--border);color:var(--text);touch-action:manipulation;}
+.demo-btn.active{background:linear-gradient(90deg,#00ffffaa,#0066ffaa,#cc00ffaa,#00ffffaa);animation:demo-shift 3s linear infinite;color:#fff;border-color:transparent;}
+@keyframes demo-shift{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
 .cue-list{gap:6px;margin-bottom:12px;}
 .cue-list::-webkit-scrollbar{width:4px;}
 .cue-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}

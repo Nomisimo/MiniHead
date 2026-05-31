@@ -171,8 +171,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Animations & Blackout — all run locally on ESP, no ArtNet needed -->
   <div class="panel area-rainbow col-right">
-    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
-    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">◈ DEMO // ALL HEADS</button>
+    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW</button>
+    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">◈ DEMO</button>
     <button class="btn" id="blackoutBtn" onclick="blackout()" style="margin-top:6px;width:100%;color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">BLACKOUT</button>
     <div class="motion-row" style="margin-top:10px;">
       <div class="motion-label" style="min-width:54px;font-size:10px;">SPEED</div>

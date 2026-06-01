@@ -39,7 +39,8 @@ void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 AsyncWebServer server(80);
 static bool _serverStarted = false;  // server.begin() must only be called once
 static bool _serverActive  = false;  // true only while this node is LEADER
-bool wifiAPMode = false;   // true when running as standalone hotspot
+bool wifiAPMode    = false;   // true when running as standalone hotspot
+bool apPasswordSet = false;   // true when AP has a password ≥8 chars
 
 // ── Leader guard ──────────────────────────────────────────────────
 // Call at the top of HTML handlers that should be unreachable for followers.
@@ -239,7 +240,8 @@ static String _wifiIP() {
 
 void handleStatus(AsyncWebServerRequest* req) {
   String json = "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\"" + _wifiIP() + "\""
-              + ",\"apMode\":"        + (wifiAPMode ? "true" : "false")
+              + ",\"apMode\":"        + (wifiAPMode    ? "true" : "false")
+              + ",\"apPasswordSet\":" + (apPasswordSet ? "true" : "false")
               + ",\"rainbowActive\":" + (rainbowActive ? "true" : "false")
               + ",\"demoActive\":"     + (demoActive     ? "true" : "false")
               + ",\"animSpeed\":"      + String(animSpeed, 2)
@@ -428,6 +430,32 @@ void handleBlackout(AsyncWebServerRequest* req) {
   udp_broadcastCommand("BLACKOUT");
   Serial.println("[WiFi] Blackout");
   sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
+// ── AP password ───────────────────────────────────────────────────
+void handleSetAPPassword(AsyncWebServerRequest* req) {
+  if (!wifiAPMode) { sendJson(req, 403, "{\"status\":\"error\",\"message\":\"Not in AP mode\"}"); return; }
+  JsonDocument doc;
+  if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return; }
+  String pw = doc["password"] | "";
+  if (pw.length() > 0 && pw.length() < 8) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Min. 8 characters (or empty to remove)\"}"); return;
+  }
+  // Save to /config.json — read first to preserve other keys
+  JsonDocument cfg;
+  storage_readJson("/config.json", cfg);
+  cfg["apPassword"] = pw;
+  storage_writeJson("/config.json", cfg);
+  apPasswordSet = (pw.length() >= 8);
+  // Restart softAP with updated credentials
+  uint8_t mac[6]; WiFi.macAddress(mac);
+  char ssid[32];
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X%02X", mac[3], mac[4], mac[5]);
+  WiFi.softAPdisconnect(false);
+  if (apPasswordSet) WiFi.softAP(ssid, pw.c_str());
+  else               WiFi.softAP(ssid);
+  Serial.printf("[WiFi] AP password %s\n", apPasswordSet ? "updated" : "cleared");
+  sendJson(req, 200, String("{\"status\":\"ok\",\"reconnect\":") + (apPasswordSet ? "true" : "false") + "}");
 }
 
 void handleGetCues(AsyncWebServerRequest* req) {
@@ -663,6 +691,9 @@ void setupRoutes() {
     nullptr, _bodyAccumulator);
   server.on("/api/blackout",         HTTP_POST,
     [](AsyncWebServerRequest* r){ handleBlackout(r); });
+  server.on("/api/ap/password",      HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleSetAPPassword(r); },
+    nullptr, _bodyAccumulator);
 
   // ── Cues — /reorder must come before /* ───────────────────────
   server.on("/api/cues",         HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetCues(r); });
@@ -703,19 +734,41 @@ void setupRoutes() {
     nullptr, _bodyAccumulator);
 
   // ── Captive portal detection ──────────────────────────────────
-  // iOS, Android and Windows each probe a known URL to detect captive portals.
-  // Redirecting them to / makes the OS show a "Sign in to network" popup that
-  // opens our web UI. All other unknown URLs also redirect in AP mode.
-  auto _cap = [](AsyncWebServerRequest* r){ r->redirect("http://192.168.4.1/"); };
-  server.on("/hotspot-detect.html",              HTTP_GET, _cap);  // iOS / macOS
-  server.on("/library/test/success.html",        HTTP_GET, _cap);  // iOS older
-  server.on("/generate_204",                     HTTP_GET, _cap);  // Android
-  server.on("/connecttest.txt",                  HTTP_GET, _cap);  // Windows
-  server.on("/redirect",                         HTTP_GET, _cap);  // Windows
-  server.on("/canonical.html",                   HTTP_GET, _cap);  // Firefox
-  server.on("/success.txt",                      HTTP_GET, _cap);  // macOS older
+  // The OS probes a known URL; we respond with a minimal page containing
+  // one "Open Controller" button that opens the full UI in the real browser.
+  // This avoids the restricted captive-portal mini-browser showing the full UI.
+  auto _cap = [](AsyncWebServerRequest* r) {
+    r->send(200, "text/html",
+      "<!DOCTYPE html><html><head>"
+      "<meta charset='UTF-8'>"
+      "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+      "<title>MiniHead</title>"
+      "<style>"
+      "*{margin:0;padding:0;box-sizing:border-box;}"
+      "body{font-family:sans-serif;background:#111;color:#fff;"
+      "min-height:100vh;display:flex;flex-direction:column;"
+      "align-items:center;justify-content:center;padding:32px;text-align:center;}"
+      "h1{font-size:20px;letter-spacing:3px;color:#00e5ff;margin-bottom:8px;}"
+      "p{font-size:13px;color:#888;margin-bottom:32px;line-height:1.6;}"
+      "a{display:block;padding:16px 32px;background:#00e5ff;color:#000;"
+      "font-weight:700;text-decoration:none;border-radius:8px;font-size:16px;"
+      "letter-spacing:1px;}"
+      "</style></head><body>"
+      "<h1>// MINIHEAD</h1>"
+      "<p>Connected to hotspot.<br>Open the controller in your browser.</p>"
+      "<a href='http://192.168.4.1/'>OPEN CONTROLLER</a>"
+      "</body></html>"
+    );
+  };
+  server.on("/hotspot-detect.html",       HTTP_GET, _cap);  // iOS / macOS
+  server.on("/library/test/success.html", HTTP_GET, _cap);  // iOS older
+  server.on("/generate_204",              HTTP_GET, _cap);  // Android
+  server.on("/connecttest.txt",           HTTP_GET, _cap);  // Windows
+  server.on("/redirect",                  HTTP_GET, _cap);  // Windows
+  server.on("/canonical.html",            HTTP_GET, _cap);  // Firefox
+  server.on("/success.txt",               HTTP_GET, _cap);  // macOS older
 
-  // ── 404 fallback ──────────────────────────────────────────────
+  // ── 404 fallback — redirect to root in AP mode ─────────────────
   server.onNotFound([](AsyncWebServerRequest* r){
     if (wifiAPMode) { r->redirect("http://192.168.4.1/"); return; }
     r->send(404, "text/plain", "Not found");

@@ -53,11 +53,6 @@ static void wifi_saveLastSSID(const char* ssid) {
 // Called when wifi_connectMulti() fails twice. Starts an open hotspot
 // so the user can still reach the web UI without a known network.
 static void wifi_startAPMode() {
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
-
   // Load AP password from /config.json (overrides config.h default if set)
   String apPw = AP_PASSWORD;
   { JsonDocument cfg;
@@ -67,6 +62,14 @@ static void wifi_startAPMode() {
   WiFi.disconnect(true);
   delay(200);
   WiFi.mode(WIFI_AP);
+  delay(100);  // let mode settle before reading MAC
+
+  // Read MAC after mode switch — reading it during failed STA attempts gives garbage
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  char ssid[32];
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
+
   if (apPw.length() >= 8) WiFi.softAP(ssid, apPw.c_str());
   else                     WiFi.softAP(ssid);
   wifiAPMode    = true;

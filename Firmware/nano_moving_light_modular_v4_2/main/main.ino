@@ -56,7 +56,7 @@ static void wifi_startAPMode() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X%02X", mac[3], mac[4], mac[5]);
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X", mac[5]);
 
   // Load AP password from /config.json (overrides config.h default if set)
   String apPw = AP_PASSWORD;

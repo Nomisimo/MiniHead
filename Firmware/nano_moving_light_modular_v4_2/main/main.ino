@@ -99,6 +99,22 @@ static void wifi_connectMulti() {
   WiFi.disconnect(true);
   delay(200);
 
+#ifdef PLUGIN_ESPNOW_PROVISION
+  // Try credentials received via ESP-NOW provisioning on a previous boot.
+  // File is removed after a successful connect so normal credential flow takes over.
+  { JsonDocument provDoc;
+    if (storage_readJson("/wifi_provision.json", provDoc)) {
+      const char* s = provDoc["ssid"] | "";
+      const char* p = provDoc["pass"] | "";
+      if (strlen(s) > 0 && strlen(p) > 0 && wifi_tryConnect(s, p)) {
+        wifi_saveLastSSID(s);
+        LittleFS.remove("/wifi_provision.json");
+        return;
+      }
+    }
+  }
+#endif
+
   int failCycles = 0;
 
   while (true) {
@@ -176,6 +192,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.macAddress(deviceMAC);
   WiFi.mode(WIFI_OFF);
+
+#ifdef PLUGIN_ESPNOW_PROVISION
+  espnow_provision_pre_wifi();  // SEEKER: beacons + waits for creds; returns on timeout
+#endif
 
   wifi_connectMulti();      // blocks until connected (or starts AP mode)
 

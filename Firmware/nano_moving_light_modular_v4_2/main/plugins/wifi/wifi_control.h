@@ -39,7 +39,8 @@ void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 AsyncWebServer server(80);
 static bool _serverStarted = false;  // server.begin() must only be called once
 static bool _serverActive  = false;  // true only while this node is LEADER
-bool wifiAPMode = false;             // true when running as standalone hotspot
+bool wifiAPMode      = false;   // true when running as standalone hotspot
+bool apPasswordSet   = false;   // true when AP has a password ≥ 8 chars
 
 // ── Leader guard ──────────────────────────────────────────────────
 // Call at the top of HTML handlers that should be unreachable for followers.
@@ -239,6 +240,8 @@ static String _wifiIP() {
 
 void handleStatus(AsyncWebServerRequest* req) {
   String json = "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\"" + _wifiIP() + "\""
+              + ",\"apMode\":"         + (wifiAPMode    ? "true" : "false")
+              + ",\"apPasswordSet\":"  + (apPasswordSet ? "true" : "false")
               + ",\"rainbowActive\":"  + (rainbowActive ? "true" : "false")
               + ",\"demoActive\":"     + (demoActive     ? "true" : "false")
               + ",\"animSpeed\":"      + String(animSpeed, 2)
@@ -427,6 +430,32 @@ void handleBlackout(AsyncWebServerRequest* req) {
   udp_broadcastCommand("BLACKOUT");
   Serial.println("[WiFi] Blackout");
   sendJson(req, 200, "{\"status\":\"ok\"}");
+}
+
+// ── AP password management ────────────────────────────────────────
+void handleSetAPPassword(AsyncWebServerRequest* req) {
+  if (!wifiAPMode) { sendJson(req, 403, "{\"status\":\"error\",\"message\":\"Not in AP mode\"}"); return; }
+  JsonDocument doc;
+  if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Bad JSON\"}"); return; }
+  String pw = doc["password"] | "";
+  if (pw.length() > 0 && pw.length() < 8) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Password must be at least 8 characters (or empty to remove)\"}");
+    return;
+  }
+  // Persist
+  JsonDocument save; save["password"] = pw;
+  storage_writeJson("/ap_config.json", save);
+  apPasswordSet = (pw.length() >= 8);
+  // Restart softAP with new credentials — clients will need to reconnect
+  uint8_t mac[6]; WiFi.macAddress(mac);
+  char ssid[32];
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X%02X", mac[3], mac[4], mac[5]);
+  WiFi.softAPdisconnect(false);
+  if (apPasswordSet) WiFi.softAP(ssid, pw.c_str());
+  else               WiFi.softAP(ssid);
+  Serial.printf("[WiFi] AP password %s\n", apPasswordSet ? "set" : "cleared");
+  // reconnect=true tells the browser it will be disconnected
+  sendJson(req, 200, String("{\"status\":\"ok\",\"reconnect\":") + (apPasswordSet ? "true" : "false") + "}");
 }
 
 void handleGetCues(AsyncWebServerRequest* req) {
@@ -662,6 +691,9 @@ void setupRoutes() {
     nullptr, _bodyAccumulator);
   server.on("/api/blackout",         HTTP_POST,
     [](AsyncWebServerRequest* r){ handleBlackout(r); });
+  server.on("/api/ap/password",      HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleSetAPPassword(r); },
+    nullptr, _bodyAccumulator);
 
   // ── Cues — /reorder must come before /* ───────────────────────
   server.on("/api/cues",         HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetCues(r); });

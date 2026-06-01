@@ -11,7 +11,7 @@
 #include "config.h"
 #include <ESPmDNS.h>
 #include <DNSServer.h>
-#include <esp_efuse.h>
+#include <esp_mac.h>
 
 SET_LOOP_TASK_STACK_SIZE(16384);  // default is 8192, double it
 

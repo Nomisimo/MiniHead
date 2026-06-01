@@ -448,9 +448,8 @@ void handleSetAPPassword(AsyncWebServerRequest* req) {
   storage_writeJson("/config.json", cfg);
   apPasswordSet = (pw.length() >= 8);
   // Restart softAP with updated credentials
-  uint8_t mac[6]; WiFi.macAddress(mac);
   char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", deviceMAC[4], deviceMAC[5]);
   WiFi.softAPdisconnect(false);
   if (apPasswordSet) WiFi.softAP(ssid, pw.c_str());
   else               WiFi.softAP(ssid);

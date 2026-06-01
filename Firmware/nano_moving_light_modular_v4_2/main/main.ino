@@ -61,10 +61,8 @@ static void wifi_startAPMode() {
 
   // Read base MAC directly from eFuse — hardware-permanent, never changes,
   // works regardless of WiFi mode or connection state.
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
   char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", deviceMAC[4], deviceMAC[5]);
 
   WiFi.disconnect(true);
   delay(200);
@@ -167,9 +165,17 @@ static void wifi_connectMulti() {
 
 // ── Arduino entry points ──────────────────────────────────────────
 
+uint8_t deviceMAC[6];  // hardware STA MAC — read once before any WiFi mode changes
+
 void setup() {
   Serial.begin(115200);
   core_setup();             // mounts LittleFS — must run before wifi_connectMulti
+
+  // Read MAC before any WiFi mode changes — result is stable regardless of
+  // whether the device ends up in STA or AP mode.
+  WiFi.mode(WIFI_STA);
+  WiFi.macAddress(deviceMAC);
+  WiFi.mode(WIFI_OFF);
 
   wifi_connectMulti();      // blocks until connected (or starts AP mode)
 

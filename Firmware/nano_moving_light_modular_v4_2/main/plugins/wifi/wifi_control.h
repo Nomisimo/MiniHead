@@ -39,6 +39,7 @@ void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 AsyncWebServer server(80);
 static bool _serverStarted = false;  // server.begin() must only be called once
 static bool _serverActive  = false;  // true only while this node is LEADER
+bool wifiAPMode = false;             // true when running as standalone hotspot
 
 // ── Leader guard ──────────────────────────────────────────────────
 // Call at the top of HTML handlers that should be unreachable for followers.
@@ -700,8 +701,22 @@ void setupRoutes() {
     },
     nullptr, _bodyAccumulator);
 
+  // ── Captive portal detection ──────────────────────────────────
+  // iOS, Android and Windows each probe a known URL to detect captive portals.
+  // Redirecting them to / makes the OS show a "Sign in to network" popup that
+  // opens our web UI. All other unknown URLs also redirect in AP mode.
+  auto _cap = [](AsyncWebServerRequest* r){ r->redirect("http://192.168.4.1/"); };
+  server.on("/hotspot-detect.html",              HTTP_GET, _cap);  // iOS / macOS
+  server.on("/library/test/success.html",        HTTP_GET, _cap);  // iOS older
+  server.on("/generate_204",                     HTTP_GET, _cap);  // Android
+  server.on("/connecttest.txt",                  HTTP_GET, _cap);  // Windows
+  server.on("/redirect",                         HTTP_GET, _cap);  // Windows
+  server.on("/canonical.html",                   HTTP_GET, _cap);  // Firefox
+  server.on("/success.txt",                      HTTP_GET, _cap);  // macOS older
+
   // ── 404 fallback ──────────────────────────────────────────────
   server.onNotFound([](AsyncWebServerRequest* r){
+    if (wifiAPMode) { r->redirect("http://192.168.4.1/"); return; }
     r->send(404, "text/plain", "Not found");
   });
 }

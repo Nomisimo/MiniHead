@@ -9,8 +9,12 @@
  */
 
 #include "config.h"
+#include <ESPmDNS.h>
+#include <DNSServer.h>
 
 SET_LOOP_TASK_STACK_SIZE(16384);  // default is 8192, double it
+
+static DNSServer _dnsServer;
 
 // ── WiFi multi-network helpers ────────────────────────────────────
 
@@ -58,9 +62,20 @@ static void wifi_startAPMode() {
   delay(200);
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid);   // open — no password
+  wifiAPMode = true;
 
-  Serial.printf("[WiFi] AP mode — SSID: %s  IP: %s\n",
-                ssid, WiFi.softAPIP().toString().c_str());
+  IPAddress apIP = WiFi.softAPIP();
+  Serial.printf("[WiFi] AP mode — SSID: %s  IP: %s\n", ssid, apIP.toString().c_str());
+
+  // DNS server: answer ALL queries with our IP → captive portal on any URL
+  _dnsServer.start(53, "*", apIP);
+  Serial.println("[WiFi] Captive portal DNS started");
+
+  // mDNS: accessible as minihead.local in addition to 192.168.4.1
+  if (MDNS.begin("minihead")) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.println("[WiFi] mDNS: minihead.local");
+  }
 
   // Slow blue pulse × 3 so the user knows "I'm a hotspot, connect to me"
   for (int i = 0; i < 3; i++) {
@@ -145,18 +160,29 @@ void setup() {
   Serial.begin(115200);
   core_setup();             // mounts LittleFS — must run before wifi_connectMulti
 
-  wifi_connectMulti();      // blocks until connected
+  wifi_connectMulti();      // blocks until connected (or starts AP mode)
 
   // Disable WiFi modem sleep — without this the radio powers down between
   // beacon intervals and drops ~60% of incoming UDP packets (ArtNet etc.).
   WiFi.setSleep(false);
   Serial.println("[WiFi] Modem sleep disabled (low-latency UDP mode)");
 
+  // mDNS for STA mode — accessible as minihead.local on the local network
+  if (!wifiAPMode) {
+    if (MDNS.begin("minihead")) {
+      MDNS.addService("http", "tcp", 80);
+      Serial.println("[WiFi] mDNS: minihead.local");
+    }
+  }
+
   for (int i = 0; i < _pluginCount; i++)
     _plugins[i].setup();
 }
 
 void loop() {
+  // Process DNS in AP/captive-portal mode
+  if (wifiAPMode) _dnsServer.processNextRequest();
+
   core_loop();
   for (int i = 0; i < _pluginCount; i++)
     _plugins[i].loop();

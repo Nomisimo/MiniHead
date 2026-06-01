@@ -11,6 +11,7 @@
 #include "config.h"
 #include <ESPmDNS.h>
 #include <DNSServer.h>
+#include <esp_efuse.h>
 
 SET_LOOP_TASK_STACK_SIZE(16384);  // default is 8192, double it
 
@@ -59,16 +60,16 @@ static void wifi_startAPMode() {
     if (storage_readJson("/config.json", cfg) && cfg["apPassword"].is<const char*>())
       apPw = String(cfg["apPassword"].as<const char*>()); }
 
+  // Read base MAC directly from eFuse — hardware-permanent, never changes,
+  // works regardless of WiFi mode or connection state.
+  uint8_t mac[6];
+  esp_efuse_mac_get_default(mac);
+  char ssid[32];
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
+
   WiFi.disconnect(true);
   delay(200);
   WiFi.mode(WIFI_AP);
-  delay(100);  // let mode settle before reading MAC
-
-  // Read MAC after mode switch — reading it during failed STA attempts gives garbage
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
 
   if (apPw.length() >= 8) WiFi.softAP(ssid, apPw.c_str());
   else                     WiFi.softAP(ssid);

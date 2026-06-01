@@ -733,9 +733,24 @@ void setupRoutes() {
     },
     nullptr, _bodyAccumulator);
 
-  // ── 404 fallback — redirect to root in AP mode ─────────────────
+  // ── Captive portal suppression ───────────────────────────────────
+  // iOS/Android probe specific URLs to detect captive portals. Returning
+  // the exact "Success" response makes them think there is internet access
+  // → no CNA popup appears at all → network connects silently.
+  // User then opens Safari and navigates to 192.168.4.1 / minihead.local.
+  auto _ok = [](AsyncWebServerRequest* r){
+    r->send(200, "text/html",
+      "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"); };
+  server.on("/hotspot-detect.html",       HTTP_GET, _ok);  // iOS / macOS
+  server.on("/library/test/success.html", HTTP_GET, _ok);  // iOS older
+  server.on("/generate_204",              HTTP_GET, [](AsyncWebServerRequest* r){ r->send(204); });  // Android
+  server.on("/connecttest.txt",           HTTP_GET, [](AsyncWebServerRequest* r){ r->send(200,"text/plain","Microsoft Connect Test"); });  // Windows
+  server.on("/redirect",                  HTTP_GET, _ok);
+  server.on("/canonical.html",            HTTP_GET, _ok);
+  server.on("/success.txt",               HTTP_GET, _ok);
+
+  // ── 404 fallback ─────────────────────────────────────────────────
   server.onNotFound([](AsyncWebServerRequest* r){
-    if (wifiAPMode) { r->redirect("http://192.168.4.1/"); return; }
     r->send(404, "text/plain", "Not found");
   });
 }

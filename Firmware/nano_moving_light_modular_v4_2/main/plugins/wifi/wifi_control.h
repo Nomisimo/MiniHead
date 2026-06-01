@@ -450,7 +450,7 @@ void handleSetAPPassword(AsyncWebServerRequest* req) {
   // Restart softAP with updated credentials
   uint8_t mac[6]; WiFi.macAddress(mac);
   char ssid[32];
-  snprintf(ssid, sizeof(ssid), "MiniHead-%02X", mac[5]);
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
   WiFi.softAPdisconnect(false);
   if (apPasswordSet) WiFi.softAP(ssid, pw.c_str());
   else               WiFi.softAP(ssid);
@@ -756,7 +756,8 @@ void setupRoutes() {
       "</style></head><body>"
       "<h1>// MINIHEAD</h1>"
       "<p>Connected to hotspot.<br>Open the controller in your browser.</p>"
-      "<a href='http://192.168.4.1/' target='_blank' rel='noopener'>OPEN CONTROLLER</a>"
+      "<a href='http://192.168.4.1/' target='_blank' rel='noopener'"
+      " onclick='window.open(\"http://192.168.4.1/\",\"_blank\");return false;'>OPEN CONTROLLER</a>"
       "</body></html>"
     );
   };

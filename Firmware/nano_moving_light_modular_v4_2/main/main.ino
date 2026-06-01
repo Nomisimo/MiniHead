@@ -45,10 +45,37 @@ static void wifi_saveLastSSID(const char* ssid) {
   storage_writeJson("/wifi_last.json", doc);
 }
 
+// ── AP fallback ───────────────────────────────────────────────────
+// Called when wifi_connectMulti() fails twice. Starts an open hotspot
+// so the user can still reach the web UI without a known network.
+static void wifi_startAPMode() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  char ssid[32];
+  snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X%02X", mac[3], mac[4], mac[5]);
+
+  WiFi.disconnect(true);
+  delay(200);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid);   // open — no password
+
+  Serial.printf("[WiFi] AP mode — SSID: %s  IP: %s\n",
+                ssid, WiFi.softAPIP().toString().c_str());
+
+  // Slow blue pulse × 3 so the user knows "I'm a hotspot, connect to me"
+  for (int i = 0; i < 3; i++) {
+    setLED(0, 0, 60, 0); delay(400);
+    setLED(0, 0,  0, 0); delay(400);
+  }
+  setLED(0, 0, 20, 0);  // dim blue stays on
+}
+
 static void wifi_connectMulti() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   delay(200);
+
+  int failCycles = 0;
 
   while (true) {
     // Read last-connected SSID from flash
@@ -99,7 +126,13 @@ static void wifi_connectMulti() {
       }
     }
 
-    Serial.println("[WiFi] All networks failed — retrying in 10 s...");
+    failCycles++;
+    if (failCycles >= 2) {
+      wifi_startAPMode();
+      return;   // proceed with setup() in AP mode
+    }
+
+    Serial.printf("[WiFi] All networks failed (%d/2) — retrying in 10 s...\n", failCycles);
     setLED(20, 0, 0, 0);   // dim red while waiting
     delay(10000);
     setLED(0, 0, 0, 0);

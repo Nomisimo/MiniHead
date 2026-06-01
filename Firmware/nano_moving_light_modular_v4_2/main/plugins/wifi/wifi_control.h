@@ -231,8 +231,13 @@ void fireCueToTargets(const Cue& c) {
 
 void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
 
+static String _wifiIP() {
+  IPAddress ip = WiFi.localIP();
+  return (ip != IPAddress(0,0,0,0)) ? ip.toString() : WiFi.softAPIP().toString();
+}
+
 void handleStatus(AsyncWebServerRequest* req) {
-  String json = "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\"" + WiFi.localIP().toString() + "\""
+  String json = "{\"connected\":true,\"port\":\"WiFi\",\"ip\":\"" + _wifiIP() + "\""
               + ",\"rainbowActive\":"  + (rainbowActive ? "true" : "false")
               + ",\"demoActive\":"     + (demoActive     ? "true" : "false")
               + ",\"animSpeed\":"      + String(animSpeed, 2)
@@ -240,7 +245,7 @@ void handleStatus(AsyncWebServerRequest* req) {
   sendJson(req, 200, json);
 }
 void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
-void handlePorts(AsyncWebServerRequest* req)      { sendJson(req, 200, "[{\"port\":\"WiFi\",\"description\":\"ESP32 @ "+WiFi.localIP().toString()+"\"}]"); }
+void handlePorts(AsyncWebServerRequest* req)      { sendJson(req, 200, "[{\"port\":\"WiFi\",\"description\":\"ESP32 @ "+_wifiIP()+"\"}]"); }
 void handleConnect(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"status\":\"ok\",\"port\":\"WiFi\"}"); }
 void handleDisconnect(AsyncWebServerRequest* req) { sendJson(req, 200, "{\"status\":\"ok\"}"); }
 void handleSeqStop(AsyncWebServerRequest* req)    { seqRunning = false; sendJson(req, 200, "{\"status\":\"ok\"}"); }
@@ -721,7 +726,10 @@ void wifi_control_setup() {
   _serverActive = true;
   logcfg_load();
   loadCuesFromFlash();
-  Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
+  // In AP mode localIP() returns 0.0.0.0 — use softAPIP() as fallback
+  IPAddress _ip = WiFi.localIP();
+  String _ipStr = (_ip != IPAddress(0,0,0,0)) ? _ip.toString() : WiFi.softAPIP().toString();
+  Serial.println("[WiFi] IP: " + _ipStr);
   Serial.flush();
 
   Serial.println("[WiFi] Registering routes...");

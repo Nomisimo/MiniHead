@@ -11,7 +11,6 @@
 #include "config.h"
 #include <ESPmDNS.h>
 #include <DNSServer.h>
-#include <esp_mac.h>
 
 SET_LOOP_TASK_STACK_SIZE(16384);  // default is 8192, double it
 
@@ -63,7 +62,7 @@ static void wifi_startAPMode() {
   // Read base MAC directly from eFuse — hardware-permanent, never changes,
   // works regardless of WiFi mode or connection state.
   uint8_t mac[6];
-  esp_efuse_mac_get_default(mac);
+  WiFi.macAddress(mac);
   char ssid[32];
   snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X", mac[4], mac[5]);
 

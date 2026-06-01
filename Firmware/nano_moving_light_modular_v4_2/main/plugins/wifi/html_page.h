@@ -65,10 +65,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <span style="color:var(--text-dim)">ESP32</span>
   </div>
 </header>
-<!-- AP no-password warning — only shown in AP mode without a password -->
-<div id="ap-pw-warning" style="display:none;background:var(--danger,#ff4444);color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:1px;text-align:center;padding:6px 12px;">
-  ⚠ HOTSPOT HAS NO PASSWORD — set one in AP Settings below
-</div>
 <div id="artnet-bar">
   <div id="artnet-bar-dot"></div>
   <span>ART-NET</span>
@@ -122,24 +118,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     </div>
     <div class="panel" id="artnet-module-container" style="border-bottom:1px solid var(--border)">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net...</div>
-    </div>
-    <!-- AP Password — only rendered when in AP/hotspot mode -->
-    <div class="panel" id="ap-settings-panel" style="display:none;border-bottom:1px solid var(--border)">
-      <div class="panel-title">// AP Settings</div><hr>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:10px;">
-        Hotspot: <span id="ap-ssid-label" style="color:var(--accent)">MiniHead-...</span>
-      </div>
-      <div class="motion-row" style="margin-bottom:8px;">
-        <div class="motion-label" style="font-size:10px;min-width:72px;">PASSWORD</div>
-        <input type="password" id="apPwInput" placeholder="min. 8 chars (empty = open)"
-          style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
-                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn primary" style="flex:1;" onclick="apSetPassword()">SET PASSWORD</button>
-        <button class="btn" onclick="apClearPassword()" style="color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">CLEAR</button>
-      </div>
-      <div id="ap-pw-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
     </div>
     <div class="panel" id="log-module-container">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Log Config...</div>
@@ -243,20 +221,6 @@ fetch('/api/status').then(function(r){return r.json();}).then(function(d){
     document.getElementById('fSpeed').value=sv;
     document.getElementById('vSpeed').textContent=(d.animSpeed).toFixed(1)+'×';
   }
-  // AP mode UI
-  if(d.apMode){
-    document.getElementById('ap-settings-panel').style.display='';
-    // derive SSID from IP label — actually just show a note
-    document.getElementById('ap-ssid-label').textContent='MiniHead-... (see Wi-Fi name)';
-    if(!d.apPasswordSet){
-      document.getElementById('ap-pw-warning').style.display='';
-      document.getElementById('ap-pw-status').textContent='No password set — hotspot is open';
-      document.getElementById('ap-pw-status').style.color='var(--danger,#ff4444)';
-    } else {
-      document.getElementById('ap-pw-status').textContent='Password is set';
-      document.getElementById('ap-pw-status').style.color='var(--success,#44ff88)';
-    }
-  }
 }).catch(function(){ console.warn('Status fetch failed — device may be offline'); });
 function toast(msg,type){var el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'ok');clearTimeout(el._t);el._t=setTimeout(function(){el.className='';},2000);}
 function getValues(){return{r:+document.getElementById('fR').value,g:+document.getElementById('fG').value,b:+document.getElementById('fB').value,w:+document.getElementById('fW').value,pan:+document.getElementById('fPan').value,tilt:+document.getElementById('fTilt').value};}
@@ -308,31 +272,6 @@ function editCue(id,curTargets){_editCueId=id;fetch('/api/fixtures').then(functi
 function cueEditClose(){document.getElementById('cueEditModal').classList.remove('open');_editCueId=null;}
 function cueEditSave(){if(!_editCueId)return;var ft=[];if(document.getElementById('cue_all').checked){ft=[0];}else{document.querySelectorAll('.cue-fix-cb:checked').forEach(function(cb){ft.push(parseInt(cb.value));});var freeVal=document.getElementById('cueEditFree').value;freeVal.split(',').forEach(function(s){var n=parseInt(s.trim());if(n>0&&ft.indexOf(n)<0)ft.push(n);});}if(!ft.length)ft=[0];fetch('/api/cues/'+_editCueId+'/targets',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixTargets:ft})}).then(function(){cueEditClose();toast('Targets updated');loadCues();});}
 function sendRaw(){var cmd=document.getElementById('cmdInput').value.trim();if(!cmd)return;sendCommand(cmd);toast('Sent: '+cmd);}
-function apSetPassword(){
-  var pw=document.getElementById('apPwInput').value;
-  if(pw.length>0&&pw.length<8){toast('Password must be at least 8 characters','err');return;}
-  fetch('/api/ap/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})})
-    .then(function(r){return r.json();}).then(function(d){
-      if(d.status==='ok'){
-        document.getElementById('ap-pw-input')&&(document.getElementById('apPwInput').value='');
-        if(d.reconnect){
-          document.getElementById('ap-pw-status').textContent='Password set — reconnect with new password';
-          document.getElementById('ap-pw-status').style.color='var(--success,#44ff88)';
-          document.getElementById('ap-pw-warning').style.display='none';
-          toast('Password set — reconnect to hotspot');
-        } else {
-          document.getElementById('ap-pw-status').textContent='Password cleared — hotspot is now open';
-          document.getElementById('ap-pw-status').style.color='var(--danger,#ff4444)';
-          document.getElementById('ap-pw-warning').style.display='';
-          toast('Password cleared');
-        }
-      } else { toast(d.message||'Error','err'); }
-    }).catch(function(){toast('No response','err');});
-}
-function apClearPassword(){
-  document.getElementById('apPwInput').value='';
-  apSetPassword();
-}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
 updatePreview();loadCues();
 // Load network heads plugin

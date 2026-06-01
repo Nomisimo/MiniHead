@@ -37,6 +37,11 @@ static const WifiCredential WIFI_NETWORKS[] = {
 };
 static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
 
+// ── AP hotspot password ───────────────────────────────────────────
+// Used when no known WiFi is reachable and the ESP starts its own hotspot.
+// Must be at least 8 characters. Use "" for an open (no-password) network.
+#define AP_PASSWORD "minihead"
+
 // ── Plugins ───────────────────────────────────────────────────────
 // NOTE: startup_animation must come first (runs before WiFi is up).
 //       wifi must come after startup_animation.

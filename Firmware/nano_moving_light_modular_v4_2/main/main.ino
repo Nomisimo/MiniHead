@@ -58,19 +58,12 @@ static void wifi_startAPMode() {
   char ssid[32];
   snprintf(ssid, sizeof(ssid), "MiniHead-%02X%02X%02X", mac[3], mac[4], mac[5]);
 
-  // Load saved AP password from flash
-  String apPw = "";
-  { JsonDocument pwDoc;
-    if (storage_readJson("/ap_config.json", pwDoc))
-      apPw = String(pwDoc["password"] | ""); }
-
   WiFi.disconnect(true);
   delay(200);
   WiFi.mode(WIFI_AP);
-  if (apPw.length() >= 8) WiFi.softAP(ssid, apPw.c_str());
-  else                     WiFi.softAP(ssid);
-  wifiAPMode    = true;
-  apPasswordSet = (apPw.length() >= 8);
+  if (strlen(AP_PASSWORD) >= 8) WiFi.softAP(ssid, AP_PASSWORD);
+  else                          WiFi.softAP(ssid);
+  wifiAPMode = true;
 
   IPAddress apIP = WiFi.softAPIP();
   Serial.printf("[WiFi] AP mode — SSID: %s  IP: %s\n", ssid, apIP.toString().c_str());

@@ -636,42 +636,6 @@ void setupConfigRoutes() {
 #endif
 }
 
-// ── Captive portal handler (iOS WISPr two-step) ───────────────────
-// Must be a named static function — lambdas can't call req->hasParam() cleanly.
-static void handleCaptivePortal(AsyncWebServerRequest* req) {
-  // Step 2: iOS probes the same URL again after the JS timer fires.
-  // Returning the exact "Success" body makes iOS mark the network connected
-  // and allows the "Open Controller" link to open in Safari.
-  if (req->hasParam("success")) {
-    req->send(200, "text/html",
-      "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
-    return;
-  }
-  // Step 1: CNA page — shows the link + JS that triggers step 2 after 1.5 s.
-  // User has that window to tap; once iOS marks connected the link opens Safari.
-  req->send(200, "text/html",
-    "<!DOCTYPE html><html><head>"
-    "<meta charset='UTF-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>MiniHead</title>"
-    "<script>setTimeout(function(){window.location.href='/hotspot-detect.html?success'},1500);</script>"
-    "<style>"
-    "*{margin:0;padding:0;box-sizing:border-box;}"
-    "body{font-family:sans-serif;background:#111;color:#fff;"
-    "min-height:100vh;display:flex;flex-direction:column;"
-    "align-items:center;justify-content:center;padding:32px;text-align:center;}"
-    "h1{font-size:20px;letter-spacing:3px;color:#00e5ff;margin-bottom:8px;}"
-    "p{font-size:13px;color:#888;margin-bottom:32px;line-height:1.6;}"
-    "a{display:block;padding:16px 32px;background:#00e5ff;color:#000;"
-    "font-weight:700;text-decoration:none;border-radius:8px;font-size:16px;letter-spacing:1px;}"
-    "</style></head><body>"
-    "<h1>// MINIHEAD</h1>"
-    "<p>Connected to hotspot.<br>Tap to open the controller.</p>"
-    "<a href='http://192.168.4.1/'>OPEN CONTROLLER</a>"
-    "</body></html>"
-  );
-}
-
 // ── Route setup ───────────────────────────────────────────────────
 
 void setupRoutes() {
@@ -768,20 +732,6 @@ void setupRoutes() {
       else r->send(404, "text/plain", "Not found");
     },
     nullptr, _bodyAccumulator);
-
-  // ── Captive portal — iOS WISPr two-step handshake ────────────────
-  // iOS CNA blocks external links until it considers the network "connected".
-  // Step 1: serve the CNA page with the link + a JS timer (1500 ms) that
-  //         navigates to ?success — this triggers a second OS probe.
-  // Step 2: when the OS probes ?success, return the exact Success string.
-  //         iOS now marks the network connected → the link opens Safari.
-  server.on("/hotspot-detect.html",       HTTP_GET, handleCaptivePortal);
-  server.on("/library/test/success.html", HTTP_GET, handleCaptivePortal);
-  server.on("/generate_204",              HTTP_GET, handleCaptivePortal);
-  server.on("/connecttest.txt",           HTTP_GET, handleCaptivePortal);
-  server.on("/redirect",                  HTTP_GET, handleCaptivePortal);
-  server.on("/canonical.html",            HTTP_GET, handleCaptivePortal);
-  server.on("/success.txt",               HTTP_GET, handleCaptivePortal);
 
   // ── 404 fallback — redirect to root in AP mode ─────────────────
   server.onNotFound([](AsyncWebServerRequest* r){

@@ -50,3 +50,7 @@ git clone https://github.com/Nomisimo/MiniHead.git
 ## 📜 Lizenz
 
 **GNU General Public License v3.0** — [LICENSE](./LICENSE)
+
+---
+
+*Vibe coded with [Claude Code](https://claude.ai/code)*

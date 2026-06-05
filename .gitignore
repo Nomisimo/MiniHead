@@ -26,6 +26,6 @@ PC APP v2/data/
 # Old 3D model exports
 3d-models/Old Stepfiles/
 
-# Claude internal
+# AI assistant local files
 .claude/
 .claire/

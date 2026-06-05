@@ -167,14 +167,30 @@ static void wifi_connectMulti() {
     }
 
     failCycles++;
+
+    // AP fallback only in Standalone mode (no UDP, no Art-Net).
+    // UDP and Art-Net devices must stay on the network — they keep retrying.
+#if !defined(PLUGIN_UDP_CONTROL) && !defined(PLUGIN_ARTNET)
     if (failCycles >= 2) {
       wifi_startAPMode();
       return;   // proceed with setup() in AP mode
     }
+#endif
 
-    Serial.printf("[WiFi] All networks failed (%d/2) — retrying in 10 s...\n", failCycles);
+    Serial.printf("[WiFi] All networks failed (%d) — retrying...\n", failCycles);
     setLED(20, 0, 0, 0);   // dim red while waiting
+
+#ifdef PLUGIN_ESPNOW_PROVISION
+    // No credentials: keep ESP-NOW SEEKER alive between scan attempts.
+    // espnow_provision_pre_wifi() is a no-op when credentials exist,
+    // reboots on success, returns after PROVISION_TIMEOUT_MS if no SENDER found.
+    espnow_provision_pre_wifi();
+    // Only add the normal 10 s pause when creds exist (pre_wifi returned immediately).
+    if (WIFI_NETWORK_COUNT > 0) delay(10000);
+#else
     delay(10000);
+#endif
+
     setLED(0, 0, 0, 0);
   }
 }

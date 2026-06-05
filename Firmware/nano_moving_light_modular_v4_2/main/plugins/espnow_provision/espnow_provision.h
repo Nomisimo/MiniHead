@@ -62,6 +62,12 @@ static volatile bool _prov_provisioned = false;
 static char _prov_rxSSID[33] = {};
 static char _prov_rxPass[65] = {};
 
+// Raw payload staging — written by recv callback (WiFi task), read by main loop.
+// No crypto in the callback: just copy bytes and raise a flag.
+static uint8_t       _prov_rxRaw[220];
+static int           _prov_rxLen   = 0;
+static volatile bool _prov_rxReady = false;
+
 // ── SENDER task resources (static — no heap after init) ───────────
 enum _ProvMsgType : uint8_t { PROV_MSG_BEACON = 1, PROV_MSG_STOP = 2 };
 struct _ProvMsg {
@@ -162,51 +168,26 @@ static size_t _prov_buildPayload(uint8_t* buf, size_t bufLen,
 }
 
 // ── SEEKER receive callback ────────────────────────────────────────
-// Runs in WiFi task context — minimal work, no blocking calls.
+// WiFi task context — NO crypto here (mbedtls stack usage crashes the task).
+// Just gate-check magic/role/length and copy raw bytes; main loop does crypto.
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 static void _prov_seekerRecvCb(const esp_now_recv_info_t*, const uint8_t* data, int len)
 #else
 static void _prov_seekerRecvCb(const uint8_t*, const uint8_t* data, int len)
 #endif
 {
-    if (_prov_provisioned) return;
-
-    // Min valid payload: 28 header + 16 cipher + 32 HMAC = 76 bytes
-    if (len < 76) return;
+    if (_prov_provisioned || _prov_rxReady) return;
+    if (len < 76 || len > (int)sizeof(_prov_rxRaw)) return;
     if (data[0] != 0xE5 || data[1] != 0x50) return;
-    if (data[2] != 0x01) return;  // version
-    if (data[3] != 0x01) return;  // role = SENDER
-
-    // Verify HMAC (covers everything except the trailing 32-byte HMAC itself)
-    size_t covered = (size_t)len - 32;
-    uint8_t expected[32];
-    if (!crypto_hmac_sha256(_prov_keyHmac, 32, data, covered, expected)) return;
-    if (memcmp(data + covered, expected, 32) != 0) return;
-
-    // Decrypt
-    const uint8_t* iv     = data + 12;
-    const uint8_t* cipher = data + 28;
-    size_t cipherLen = covered - 28;
-
-    static uint8_t plain[160];
-    size_t plainLen = crypto_aes128_cbc_decrypt(_prov_keyAes, iv, cipher, cipherLen, plain);
-    if (plainLen == 0 || plainLen >= sizeof(plain)) return;
-    plain[plainLen] = 0;
-
-    // Parse: ssid \0 pass
-    const char* ssid = (const char*)plain;
-    size_t ssidLen   = strnlen(ssid, plainLen);
-    if (ssidLen == 0 || ssidLen >= plainLen) return;
-    const char* pass = ssid + ssidLen + 1;
-    size_t passLen   = strnlen(pass, plainLen - ssidLen - 1);
-    if (ssidLen > 32 || passLen > 64) return;
-
-    memcpy(_prov_rxSSID, ssid, ssidLen); _prov_rxSSID[ssidLen] = 0;
-    memcpy(_prov_rxPass, pass, passLen); _prov_rxPass[passLen] = 0;
-    _prov_provisioned = true;
+    if (data[2] != 0x01 || data[3] != 0x01) return;  // version + role = SENDER
+    memcpy(_prov_rxRaw, data, len);
+    _prov_rxLen   = len;
+    _prov_rxReady = true;  // main loop handles HMAC + AES safely
 }
 
 // ── SENDER receive callback ────────────────────────────────────────
+// WiFi task context — NO crypto here (mbedtls stack usage crashes the task).
+// Gate on magic/role/length only; HMAC + replay check happen in the FreeRTOS task.
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 static void _prov_senderRecvCb(const esp_now_recv_info_t* info, const uint8_t* data, int len)
 #else
@@ -215,21 +196,9 @@ static void _prov_senderRecvCb(const uint8_t* mac, const uint8_t* data, int len)
 {
     if (len != 16) return;
     if (data[0] != 0xE5 || data[1] != 0x50) return;
-    if (data[2] != 0x01) return;
-    if (data[3] != 0x02) return;  // role = SEEKER
-
-    // HMAC over bytes [0..7]
-    uint8_t expected[32];
-    if (!crypto_hmac_sha256(_prov_keyHmac, 32, data, 8, expected)) return;
-    if (memcmp(data + 8, expected, 8) != 0) return;
-
-    // Replay check
-    uint32_t nonce = ((uint32_t)data[4] << 24) | ((uint32_t)data[5] << 16)
-                   | ((uint32_t)data[6] <<  8) |  (uint32_t)data[7];
-    if (_prov_nonces.contains(nonce)) return;
-    _prov_nonces.insert(nonce);
-
+    if (data[2] != 0x01 || data[3] != 0x02) return;  // version + role = SEEKER
     if (!_prov_queue) return;
+
     _ProvMsg msg = {};
     msg.type = PROV_MSG_BEACON;
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -251,6 +220,20 @@ static void _prov_senderTask(void*) {
         _ProvMsg msg;
         if (xQueueReceive(_prov_queue, &msg, pdMS_TO_TICKS(1000))) {
             if (msg.type == PROV_MSG_STOP) break;
+
+            // Verify beacon HMAC here (task stack is safe for mbedtls)
+            uint8_t expected[32];
+            if (!crypto_hmac_sha256(_prov_keyHmac, 32, msg.raw, 8, expected)) continue;
+            if (memcmp(msg.raw + 8, expected, 8) != 0) {
+                Serial.println("[PROVISION] SENDER beacon HMAC mismatch — ignored");
+                continue;
+            }
+            // Replay check
+            uint32_t nonce = ((uint32_t)msg.raw[4] << 24) | ((uint32_t)msg.raw[5] << 16)
+                           | ((uint32_t)msg.raw[6] <<  8) |  (uint32_t)msg.raw[7];
+            if (_prov_nonces.contains(nonce)) { Serial.println("[PROVISION] SENDER replay — ignored"); continue; }
+            _prov_nonces.insert(nonce);
+
             _prov_lastBeaconMs = millis();
             size_t len = _prov_buildPayload(payloadBuf, sizeof(payloadBuf),
                                              _prov_txSSID, _prov_txPass);
@@ -324,6 +307,41 @@ static void espnow_provision_pre_wifi() {
             esp_now_send(bcast, beacon, 16);
             Serial.println("[PROVISION] SEEKER beacon sent");
             lastBeacon = now;
+        }
+
+        // Process a staged payload (copied by recv callback — safe to do crypto here)
+        if (_prov_rxReady && !_prov_provisioned) {
+            const uint8_t* data = _prov_rxRaw;
+            int len = _prov_rxLen;
+            _prov_rxReady = false;  // clear flag before processing
+
+            size_t covered = (size_t)len - 32;
+            uint8_t expected[32];
+            if (crypto_hmac_sha256(_prov_keyHmac, 32, data, covered, expected) &&
+                memcmp(data + covered, expected, 32) == 0) {
+
+                const uint8_t* iv      = data + 12;
+                const uint8_t* cipher  = data + 28;
+                size_t cipherLen = covered - 28;
+                static uint8_t plain[160];
+                size_t plainLen = crypto_aes128_cbc_decrypt(_prov_keyAes, iv, cipher, cipherLen, plain);
+                if (plainLen > 0 && plainLen < sizeof(plain)) {
+                    plain[plainLen] = 0;
+                    const char* ssid = (const char*)plain;
+                    size_t ssidLen   = strnlen(ssid, plainLen);
+                    if (ssidLen > 0 && ssidLen < plainLen) {
+                        const char* pass = ssid + ssidLen + 1;
+                        size_t passLen   = strnlen(pass, plainLen - ssidLen - 1);
+                        if (ssidLen <= 32 && passLen <= 64) {
+                            memcpy(_prov_rxSSID, ssid, ssidLen); _prov_rxSSID[ssidLen] = 0;
+                            memcpy(_prov_rxPass, pass, passLen); _prov_rxPass[passLen] = 0;
+                            _prov_provisioned = true;
+                        }
+                    }
+                }
+            } else {
+                Serial.println("[PROVISION] SEEKER payload HMAC mismatch — ignored");
+            }
         }
 
         if (_prov_provisioned) {

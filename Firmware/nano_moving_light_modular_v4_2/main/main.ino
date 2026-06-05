@@ -99,8 +99,8 @@ static void wifi_connectMulti() {
   WiFi.disconnect(true);
   delay(200);
 
-#ifdef PLUGIN_ESPNOW_PROVISION
-  // Try credentials received via ESP-NOW provisioning on a previous boot.
+#ifdef PLUGIN_BLE_PROVISION
+  // Try credentials received via BLE provisioning on a previous boot.
   // File is removed after a successful connect so normal credential flow takes over.
   { JsonDocument provDoc;
     if (storage_readJson("/wifi_provision.json", provDoc)) {
@@ -180,11 +180,11 @@ static void wifi_connectMulti() {
     Serial.printf("[WiFi] All networks failed (%d) — retrying...\n", failCycles);
     setLED(20, 0, 0, 0);   // dim red while waiting
 
-#ifdef PLUGIN_ESPNOW_PROVISION
-    // No credentials: keep ESP-NOW SEEKER alive between scan attempts.
-    // espnow_provision_pre_wifi() is a no-op when credentials exist,
+#ifdef PLUGIN_BLE_PROVISION
+    // No credentials: keep BLE SEEKER alive between WiFi scan attempts.
+    // ble_provision_pre_wifi() is a no-op when credentials exist,
     // reboots on success, returns after PROVISION_TIMEOUT_MS if no SENDER found.
-    espnow_provision_pre_wifi();
+    ble_provision_pre_wifi();
     // Only add the normal 10 s pause when creds exist (pre_wifi returned immediately).
     if (WIFI_NETWORK_COUNT > 0) delay(10000);
 #else
@@ -209,8 +209,8 @@ void setup() {
   WiFi.macAddress(deviceMAC);
   WiFi.mode(WIFI_OFF);
 
-#ifdef PLUGIN_ESPNOW_PROVISION
-  espnow_provision_pre_wifi();  // SEEKER: beacons + waits for creds; returns on timeout
+#ifdef PLUGIN_BLE_PROVISION
+  ble_provision_pre_wifi();  // SEEKER: BLE scan loop; reboots if provisioned, returns on timeout
 #endif
 
   wifi_connectMulti();      // blocks until connected (or starts AP mode)

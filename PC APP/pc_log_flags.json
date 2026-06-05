@@ -1,8 +1,0 @@
-{
-  "http": false,
-  "udp": true,
-  "discovery": true,
-  "artnet": true,
-  "fixtures": true,
-  "sync": true
-}

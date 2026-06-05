@@ -1,0 +1,88 @@
+/* ── Reset ── */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{min-height:100vh;overflow-x:hidden;}
+
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.connection-bar{display:flex;align-items:center;}
+.status-dot{flex-shrink:0;}
+
+/* ── Main Grid ── */
+.main{
+  display:grid;
+  grid-template-columns:1fr;
+  grid-template-areas:
+    "light"
+    "motion"
+    "rainbow"
+    "serial"
+    "cues"
+    "sequencer"
+    "future";
+}
+@media(min-width:900px){
+  .main{
+    grid-template-columns:2fr 1fr;
+    grid-template-rows:auto auto auto auto 1fr;
+    grid-template-areas:
+      "cues       light"
+      "sequencer  motion"
+      "future     rainbow"
+      "future     serial"
+      "future     .";
+    min-height:calc(100vh - 49px);
+  }
+}
+.area-light     {grid-area:light;}
+.area-motion    {grid-area:motion;}
+.area-rainbow   {grid-area:rainbow;}
+.area-serial    {grid-area:serial;}
+.area-cues      {grid-area:cues;}
+.area-sequencer {grid-area:sequencer;}
+.area-future    {grid-area:future;}
+.area-light,.area-motion,.area-rainbow,.area-serial,.area-sequencer{position:relative;}
+
+/* ── RGBW Faders ── */
+.faders-row{display:grid;grid-template-columns:repeat(4,1fr);align-items:end;}
+.fader-group{display:flex;flex-direction:column;align-items:center;}
+.vslider-wrap{width:36px;height:140px;display:flex;align-items:center;justify-content:center;}
+input[type=range].vertical{writing-mode:vertical-lr;direction:rtl;width:36px;height:140px;-webkit-appearance:slider-vertical;appearance:slider-vertical;cursor:pointer;}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;}
+.preview-row{display:flex;justify-content:center;}
+
+/* ── Motion ── */
+.motion-row{display:grid;grid-template-columns:40px 1fr 52px;align-items:center;}
+
+/* ── Cues ── */
+.cue-list{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;}
+.cue-item{display:flex;align-items:center;}
+.cue-info{flex:1;min-width:0;}
+.cue-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cue-actions{display:flex;}
+.save-cue-form{display:flex;}
+
+/* ── Sequencer ── */
+.seq-controls{display:flex;flex-direction:column;}
+.seq-row{display:flex;align-items:center;}
+.seq-label{width:70px;flex-shrink:0;}
+.seq-buttons{display:flex;}
+.seq-buttons .btn{flex:1;}
+
+/* ── Serial ── */
+.serial-row{display:flex;}
+
+/* ── Modal ── */
+#cueEditModal{position:fixed;inset:0;z-index:600;display:none;align-items:center;justify-content:center;}
+#cueEditModal.open{display:flex;}
+.modal-box{min-width:260px;max-width:380px;width:90%;max-height:80vh;overflow-y:auto;}
+.modal-check-row{display:flex;align-items:center;cursor:pointer;}
+.modal-footer{display:flex;}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:20px;right:20px;left:20px;opacity:0;z-index:999;pointer-events:none;text-align:center;}
+#toast.show{opacity:1;}
+
+/* ── Art-Net bar ── */
+#artnet-bar{display:none;align-items:center;}
+#artnet-bar.visible{display:flex;}
+.artnet-locked{pointer-events:none!important;opacity:0.38;user-select:none;}

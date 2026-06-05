@@ -6,13 +6,19 @@
 
 #FreeCAD
 *.FCBak
+*.FCStd
+
+# 3D model local-only formats
+*.3mf
+*.stl
+*.STL
 
 # Firmware credentials — copy config.example.h → config.h and fill in your own
 Firmware/**/config.h
 
 # PyInstaller build artifacts
-PC APP/build/
-PC APP/dist/
+PC App/build/
+PC App/dist/
 *.spec.bak
 
 # Python cache
@@ -20,11 +26,7 @@ PC APP/dist/
 **/*.pyc
 
 # Runtime data files
-PC APP/pc_data.json
-PC APP v2/data/
-
-# Old 3D model exports
-3d-models/Old Stepfiles/
+PC App/data/
 
 # AI assistant local files
 .claude/

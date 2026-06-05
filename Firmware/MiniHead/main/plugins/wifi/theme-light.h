@@ -1,0 +1,65 @@
+#pragma once
+
+// ── Theme: Minimal — clean light ─────────────────────────────────
+// To activate: rename this file to theme.h (rename current theme.h first)
+
+const char THEME_CSS[] PROGMEM = R"=====(
+:root {
+  --bg:#f5f5f7; --surface:#ffffff; --surface2:#e8e8ed;
+  --border:#c7c7cc; --accent:#007aff; --accent2:#ff6b35;
+  --accent3:#5856d6; --text:#1c1c1e; --text-dim:#8e8e93;
+  --success:#34c759; --danger:#ff3b30;
+  --mono:monospace; --sans:sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;}
+header{padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
+.connection-bar{gap:10px;}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--success);}
+.panel{background:var(--surface);border:1px solid var(--border);padding:16px 20px;}
+.panel-title{margin-bottom:8px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}
+hr{border:none;border-top:1px solid var(--border);margin:0 0 14px;}
+.main{gap:6px;padding:6px;}
+@media(min-width:900px){.main{gap:8px;padding:8px;}}
+.faders-row{gap:12px;}
+.fader-group{gap:8px;}
+.preview-row{margin-top:16px;}
+.motion-row{gap:10px;margin-bottom:10px;}
+.cue-list{gap:6px;margin-bottom:12px;}
+.cue-item{gap:10px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;}
+.cue-name{font-size:13px;font-weight:600;}
+.cue-meta{font-size:11px;color:var(--text-dim);margin-top:2px;}
+.cue-swatch{width:24px;height:24px;flex-shrink:0;border-radius:4px;}
+.cue-actions{gap:4px;}
+.save-cue-form{gap:8px;}
+.seq-controls{gap:10px;}
+.seq-row{gap:10px;}
+.seq-label{font-size:12px;color:var(--text-dim);}
+.seq-buttons{gap:8px;margin-top:10px;}
+.seq-buttons .btn{padding:9px;}
+.serial-row{gap:8px;}
+input{background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px;text-align:center;}
+input[type=checkbox]{padding:0;text-align:initial;width:16px;height:16px;}
+input[type=range]{padding:0;}
+.btn{padding:8px 16px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;border-radius:6px;}
+.btn:hover{background:var(--border);}
+.btn:active{opacity:0.7;}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff;}
+.btn.success{background:var(--success);border-color:var(--success);color:#fff;}
+.btn.active{border-color:var(--accent3);color:var(--accent3);background:transparent;}
+.icon-btn{width:30px;height:30px;border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.icon-btn:hover{color:var(--text);}
+#cueEditModal{background:rgba(0,0,0,0.4);}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.modal-check-row{gap:8px;margin-bottom:8px;font-size:13px;}
+.modal-extra{margin-top:12px;}
+.modal-footer{gap:8px;margin-top:16px;}
+#toast{padding:10px 18px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:8px;}
+#toast.ok{border-color:var(--success);color:var(--success);}
+#toast.err{border-color:var(--danger);color:var(--danger);}
+@media(min-width:900px){#toast{left:auto;}}
+#artnet-bar{gap:10px;padding:8px 16px;background:rgba(52,199,89,0.1);border-bottom:1px solid rgba(52,199,89,0.3);font-size:11px;color:var(--success);}
+#artnet-bar-dot{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0;}
+#artnet-live{color:var(--text);font-size:11px;}
+#artnet-bar-count{color:var(--text-dim);margin-left:auto;}
+)=====";

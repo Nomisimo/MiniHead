@@ -238,7 +238,7 @@ static void _prov_senderRecvCb(const uint8_t* mac, const uint8_t* data, int len)
     memcpy(msg.srcMac, mac, 6);
 #endif
     memcpy(msg.raw, data, 16);
-    xQueueSend(_prov_queue, &msg, 0);
+    xQueueSend(_prov_queue, &msg, pdMS_TO_TICKS(50));
 }
 
 // ── SENDER FreeRTOS task ──────────────────────────────────────────
@@ -389,6 +389,9 @@ static void espnow_provision_setup() {
     // Use the AP's actual WiFi channel so ESP-NOW packets reach the SEEKER.
     // SEEKER must send on PROVISION_CHANNEL which must match this channel.
     uint8_t ch = (uint8_t)WiFi.channel();
+
+    // Disable WiFi power saving so broadcast ESP-NOW frames from SEEKER are not missed.
+    esp_wifi_set_ps(WIFI_PS_NONE);
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("[PROVISION] esp_now_init failed");

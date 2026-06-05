@@ -11,5 +11,5 @@
 
 #define PROVISION_CHANNEL      1      // WiFi channel for ESP-NOW (must match AP)
 #define PROVISION_BEACON_MS    2000   // how often SEEKER sends a beacon (ms)
-#define PROVISION_TIMEOUT_MS   30000  // SEEKER/SENDER gives up after this (ms)
+#define PROVISION_TIMEOUT_MS   120000 // SEEKER/SENDER gives up after this (ms)
 #define PROVISION_NONCE_CACHE  64     // replay protection ring-buffer size

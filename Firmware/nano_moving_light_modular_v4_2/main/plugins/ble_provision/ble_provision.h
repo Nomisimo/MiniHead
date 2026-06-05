@@ -229,11 +229,11 @@ static void ble_provision_pre_wifi() {
         scan->setActiveScan(true);
         scan->setInterval(100);
         scan->setWindow(99);
-        BLEScanResults results = scan->start(BLE_SCAN_SECONDS, false);
+        BLEScanResults* results = scan->start(BLE_SCAN_SECONDS, false);
 
         BLEAddress* addr = nullptr;
-        for (int i = 0; i < results.getCount(); i++) {
-            BLEAdvertisedDevice dev = results.getDevice(i);
+        for (int i = 0; i < results->getCount(); i++) {
+            BLEAdvertisedDevice dev = results->getDevice(i);
             if (dev.haveServiceUUID() &&
                 dev.isAdvertisingService(BLEUUID(BLE_PROV_SERVICE_UUID))) {
                 addr = new BLEAddress(dev.getAddress());
@@ -257,10 +257,10 @@ static void ble_provision_pre_wifi() {
                 BLERemoteCharacteristic* rchr =
                     rsvc->getCharacteristic(BLEUUID(BLE_PROV_CHAR_UUID));
                 if (rchr && rchr->canRead()) {
-                    std::string val = rchr->readValue();
+                    String val = rchr->readValue();
                     Serial.printf("[PROVISION] Payload received %d bytes — verifying\n",
-                                  (int)val.size());
-                    if (_blep_decodePayload((const uint8_t*)val.data(), val.size(),
+                                  (int)val.length());
+                    if (_blep_decodePayload((const uint8_t*)val.c_str(), val.length(),
                                             rxSSID, rxPass)) {
                         ok = true;
                     }

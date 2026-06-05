@@ -21,20 +21,14 @@
 git clone https://github.com/Nomisimo/MiniHead.git
 ```
 
-→ Aktuelle Firmware: **[Modular v4.2](Firmware/nano_moving_light_modular_v4_2/README.md)**
+→ Aktuelle Firmware: **[MiniHead](Firmware/MiniHead/README.md)**
 
 ---
 
-## 📦 Firmware-Versionen
+## 📖 Wiki
 
-| Version | Beschreibung | Status |
-|---|---|---|
-| [v1 — Serial Only](Firmware/nano_moving_light_v1/README.md) | Serielle Steuerung, kein Netzwerk | Legacy |
-| [WiFi v1](Firmware/nano_moving_light_wifi_v1/README.md) | Web-UI, Cues, Sequencer (monolithisch) | Legacy |
-| [Modular v1](Firmware/nano_moving_light_modular_v1/README.md) | Erste Modul-Architektur | Legacy |
-| [Modular v2](Firmware/nano_moving_light_modular_v2/README.md) | Plugin-System, Multi-Head-Netzwerk | Legacy |
-| [Modular v3](Firmware/nano_moving_light_modular_v3/README.md) | Art-Net / DMX512 | Legacy |
-| [**Modular v4.2**](Firmware/nano_moving_light_modular_v4_2/README.md) | LittleFS JSON, ESPAsyncWebServer, WiFi-Multi-Network, Built-in Art-Net, PC Leader App, Theme System | ✅ Aktuell |
+- [Feature Map](https://github.com/Nomisimo/MiniHead/wiki/Feature-Map)
+- [Firmware-Versionen](https://github.com/Nomisimo/MiniHead/wiki/Firmware-Versionen)
 
 ---
 

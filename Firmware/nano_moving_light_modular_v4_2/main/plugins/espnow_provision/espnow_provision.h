@@ -77,7 +77,7 @@ struct _ProvMsg {
 };
 
 static StaticTask_t  _prov_taskBuf;
-static StackType_t   _prov_taskStack[4096 / sizeof(StackType_t)];
+static StackType_t   _prov_taskStack[8192 / sizeof(StackType_t)];  // 8 KB — mbedtls needs headroom
 static StaticQueue_t _prov_queueBuf;
 static uint8_t       _prov_queueStorage[8 * sizeof(_ProvMsg)];
 static QueueHandle_t _prov_queue    = nullptr;
@@ -282,66 +282,88 @@ static void espnow_provision_pre_wifi() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
     delay(100);
-    esp_wifi_set_channel(PROVISION_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("[PROVISION] esp_now_init failed");
         return;
     }
     esp_now_register_recv_cb(_prov_seekerRecvCb);
-    _prov_addBroadcastPeer(PROVISION_CHANNEL);
 
-    Serial.printf("[PROVISION] ESP-NOW OK on channel %d — beaconing every %d ms\n",
-                  PROVISION_CHANNEL, PROVISION_BEACON_MS);
+    // Start on ch1; peer channel updated each hop below.
+    _prov_addBroadcastPeer(1);
+    Serial.println("[PROVISION] ESP-NOW OK — scanning all channels for SENDER");
 
-    unsigned long startMs    = millis();
-    unsigned long lastBeacon = 0;
+    // Cycle through all 2.4 GHz channels so we always land on the SENDER's
+    // AP channel regardless of what it is.  300 ms per channel = full sweep
+    // every ~4 s.  Most common AP channels (1, 6, 11) are tried first.
+    static const uint8_t _ch[] = {1,6,11,2,3,4,5,7,8,9,10,12,13};
+    static const uint8_t bcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+    int chIdx = 0;
+
+    unsigned long startMs = millis();
 
     while (millis() - startMs < PROVISION_TIMEOUT_MS) {
-        unsigned long now = millis();
 
-        if (now - lastBeacon >= (unsigned long)PROVISION_BEACON_MS) {
-            uint8_t beacon[16];
-            _prov_buildBeacon(beacon);
-            static const uint8_t bcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
-            esp_now_send(bcast, beacon, 16);
-            Serial.println("[PROVISION] SEEKER beacon sent");
-            lastBeacon = now;
+        // ── Switch to next channel ────────────────────────────────
+        uint8_t ch = _ch[chIdx];
+        chIdx = (chIdx + 1) % (int)(sizeof(_ch));
+
+        esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+
+        // Update the broadcast peer's channel to match
+        esp_now_peer_info_t pi = {};
+        if (esp_now_get_peer(bcast, &pi) == ESP_OK) {
+            pi.channel = ch;
+            esp_now_mod_peer(&pi);
         }
 
-        // Process a staged payload (copied by recv callback — safe to do crypto here)
-        if (_prov_rxReady && !_prov_provisioned) {
-            const uint8_t* data = _prov_rxRaw;
-            int len = _prov_rxLen;
-            _prov_rxReady = false;  // clear flag before processing
+        // ── Send beacon on this channel ───────────────────────────
+        uint8_t beacon[16];
+        _prov_buildBeacon(beacon);
+        esp_now_send(bcast, beacon, 16);
+        Serial.printf("[PROVISION] SEEKER beacon ch%d\n", ch);
 
-            size_t covered = (size_t)len - 32;
-            uint8_t expected[32];
-            if (crypto_hmac_sha256(_prov_keyHmac, 32, data, covered, expected) &&
-                memcmp(data + covered, expected, 32) == 0) {
+        // ── Wait up to 300 ms for SENDER response on this channel ─
+        unsigned long waitStart = millis();
+        while (millis() - waitStart < 300) {
 
-                const uint8_t* iv      = data + 12;
-                const uint8_t* cipher  = data + 28;
-                size_t cipherLen = covered - 28;
-                static uint8_t plain[160];
-                size_t plainLen = crypto_aes128_cbc_decrypt(_prov_keyAes, iv, cipher, cipherLen, plain);
-                if (plainLen > 0 && plainLen < sizeof(plain)) {
-                    plain[plainLen] = 0;
-                    const char* ssid = (const char*)plain;
-                    size_t ssidLen   = strnlen(ssid, plainLen);
-                    if (ssidLen > 0 && ssidLen < plainLen) {
-                        const char* pass = ssid + ssidLen + 1;
-                        size_t passLen   = strnlen(pass, plainLen - ssidLen - 1);
-                        if (ssidLen <= 32 && passLen <= 64) {
-                            memcpy(_prov_rxSSID, ssid, ssidLen); _prov_rxSSID[ssidLen] = 0;
-                            memcpy(_prov_rxPass, pass, passLen); _prov_rxPass[passLen] = 0;
-                            _prov_provisioned = true;
+            if (_prov_rxReady && !_prov_provisioned) {
+                const uint8_t* data = _prov_rxRaw;
+                int             len = _prov_rxLen;
+                _prov_rxReady = false;
+                Serial.printf("[PROVISION] SEEKER payload received len=%d — verifying\n", len);
+
+                size_t covered = (size_t)len - 32;
+                uint8_t expected[32];
+                if (crypto_hmac_sha256(_prov_keyHmac, 32, data, covered, expected) &&
+                    memcmp(data + covered, expected, 32) == 0) {
+
+                    const uint8_t* iv     = data + 12;
+                    const uint8_t* cipher = data + 28;
+                    size_t cipherLen = covered - 28;
+                    static uint8_t plain[160];
+                    size_t plainLen = crypto_aes128_cbc_decrypt(_prov_keyAes, iv, cipher, cipherLen, plain);
+                    if (plainLen > 0 && plainLen < sizeof(plain)) {
+                        plain[plainLen] = 0;
+                        const char* ssid = (const char*)plain;
+                        size_t ssidLen   = strnlen(ssid, plainLen);
+                        if (ssidLen > 0 && ssidLen < plainLen) {
+                            const char* pass = ssid + ssidLen + 1;
+                            size_t passLen   = strnlen(pass, plainLen - ssidLen - 1);
+                            if (ssidLen <= 32 && passLen <= 64) {
+                                memcpy(_prov_rxSSID, ssid, ssidLen); _prov_rxSSID[ssidLen] = 0;
+                                memcpy(_prov_rxPass, pass, passLen); _prov_rxPass[passLen] = 0;
+                                _prov_provisioned = true;
+                            }
                         }
                     }
+                } else {
+                    Serial.println("[PROVISION] SEEKER payload HMAC mismatch — ignored");
                 }
-            } else {
-                Serial.println("[PROVISION] SEEKER payload HMAC mismatch — ignored");
             }
+
+            if (_prov_provisioned) break;
+            delay(10);
         }
 
         if (_prov_provisioned) {
@@ -359,11 +381,9 @@ static void espnow_provision_pre_wifi() {
                 return;
             }
         }
-
-        delay(10);
     }
 
-    Serial.println("[PROVISION] SEEKER timeout — falling back to AP mode");
+    Serial.println("[PROVISION] SEEKER timeout — falling back");
     esp_now_deinit();
 }
 
@@ -421,7 +441,7 @@ static void espnow_provision_setup() {
 
     _prov_queue = xQueueCreateStatic(8, sizeof(_ProvMsg), _prov_queueStorage, &_prov_queueBuf);
     _prov_task  = xTaskCreateStatic(_prov_senderTask, "prov_tx",
-                                    4096 / sizeof(StackType_t), nullptr, 5,
+                                    8192 / sizeof(StackType_t), nullptr, 5,
                                     _prov_taskStack, &_prov_taskBuf);
     _prov_isSender = true;
     Serial.printf("[PROVISION] SENDER active — SSID '%s' on ch%u\n", _prov_txSSID, ch);

@@ -130,6 +130,25 @@ function toggleDemo() {
   toast(demoActive ? 'Demo ON — all heads' : 'Demo OFF');
 }
 
+var _speedTimer = null;
+function blackout() {
+  rainbowActive = false; demoActive = false;
+  document.getElementById('rainbowBtn').classList.remove('active');
+  document.getElementById('demoBtn').classList.remove('active');
+  fetch('/api/blackout', {method:'POST'});
+  toast('Blackout');
+}
+
+function onSpeed() {
+  var val = +document.getElementById('fSpeed').value;
+  document.getElementById('vSpeed').textContent = (val / 100).toFixed(1) + '×';
+  clearTimeout(_speedTimer);
+  _speedTimer = setTimeout(function() {
+    fetch('/api/animation/speed', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({speed: val / 100})});
+  }, 40);
+}
+
 // ── Cues ───────────────────────────────────────────────────────────────────
 function loadCues() {
   fetch('/api/cues').then(function(r){return r.json();}).then(renderCues).catch(function(){});

@@ -182,10 +182,16 @@
     </div>
   </div>
 
-  <!-- Rainbow + Demo -->
+  <!-- Animations & Blackout -->
   <div class="panel area-rainbow col-right">
-    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
-    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">DEMO // ALL HEADS</button>
+    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW</button>
+    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">◈ DEMO</button>
+    <button class="btn" id="blackoutBtn" onclick="blackout()" style="margin-top:6px;width:100%;color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">BLACKOUT</button>
+    <div class="motion-row" style="margin-top:10px;">
+      <div class="motion-label" style="min-width:54px;font-size:10px;">SPEED</div>
+      <input type="range" class="horizontal" min="10" max="300" value="100" step="5" id="fSpeed" oninput="onSpeed()">
+      <span id="vSpeed" style="font-family:var(--mono);font-size:11px;color:var(--accent2);min-width:36px;text-align:right;">1.0×</span>
+    </div>
   </div>
 
   <!-- Serial -->

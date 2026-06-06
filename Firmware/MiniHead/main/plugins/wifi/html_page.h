@@ -83,7 +83,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Cues -->
   <div class="panel area-cues">
-    <div class="panel-title">// Cues</div><hr>
+    <div class="panel-title">// Cues</div>
     <div class="cue-list" id="cueList"></div>
     <div class="save-cue-form">
       <input type="text" id="cueName" placeholder="Cue name..." maxlength="30">
@@ -93,7 +93,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Sequencer -->
   <div class="panel area-sequencer">
-    <div class="panel-title">// Sequencer</div><hr>
+    <div class="panel-title">// Sequencer</div>
     <div class="seq-hint">Tap + on cues to add to sequence</div>
     <div class="seq-controls">
       <div class="seq-row">
@@ -126,7 +126,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     </div>
     <!-- AP Settings — only visible in AP/hotspot mode -->
     <div class="panel" id="ap-settings-panel" style="display:none;border-bottom:1px solid var(--border)">
-      <div class="panel-title">// AP Settings</div><hr>
+      <div class="panel-title">// AP Settings</div>
       <div class="motion-row" style="margin-bottom:8px;">
         <div class="motion-label" style="font-size:10px;min-width:72px;">PASSWORD</div>
         <input type="password" id="apPwInput" placeholder="min. 8 chars (empty = open)"
@@ -148,7 +148,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Light Control -->
   <div class="panel area-light col-right">
-    <div class="panel-title">// Light Control</div><hr>
+    <div class="panel-title">// Light Control</div>
     <div class="faders-row">
       <div class="fader-group fader-r">
         <div class="fader-label">RED</div>
@@ -176,7 +176,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Motion -->
   <div class="panel area-motion col-right">
-    <div class="panel-title">// Motion</div><hr>
+    <div class="panel-title">// Motion</div>
     <div class="motion-row">
       <div class="motion-label">PAN</div>
       <input type="range" class="horizontal" min="0" max="270" value="135" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
@@ -203,7 +203,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Serial -->
   <div class="panel area-serial col-right">
-    <div class="panel-title">// Serial</div><hr>
+    <div class="panel-title">// Serial</div>
     <div class="serial-row">
       <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45">
       <button class="btn primary" onclick="sendRaw()">SEND</button>

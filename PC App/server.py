@@ -659,6 +659,24 @@ def api_demo():
     _unicast_all("DEMO:1" if on else "DEMO:0")
     return jsonify({"status": "ok", "on": on})
 
+@app.route("/api/blackout", methods=["POST"])
+def api_blackout():
+    global rainbow_active, demo_active
+    with rainbow_lock:
+        rainbow_active = False
+    with demo_lock:
+        demo_active = False
+    _unicast_all("BLACKOUT")
+    return jsonify({"status": "ok"})
+
+@app.route("/api/animation/speed", methods=["POST"])
+def api_anim_speed():
+    data  = request.get_json(force=True)
+    speed = float(data.get("speed", 1.0))
+    speed = max(0.1, min(3.0, speed))
+    _unicast_all(f"SPEED:{speed:.2f}")
+    return jsonify({"status": "ok", "speed": speed})
+
 # ── Cues ──────────────────────────────────────────────────────────────────────
 @app.route("/api/cues")
 def api_cues_list():

@@ -38,6 +38,7 @@ static int     _preArtPan=90, _preArtTilt=90;
 void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 static bool artnet_applyOwnPatch(uint16_t universe, uint16_t length, uint8_t* data);
 static void artnet_onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data);
+static void artnet_parsePacket(uint8_t* data, size_t len, IPAddress sender);
 
 // ── Patch persistence (must live here so every node can load/save) ─
 void artnet_savePatches() {
@@ -156,6 +157,9 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
 // (or one reply with universe 0 if no patches exist).
 static void artnet_sendPollReply(IPAddress dest) {
   IPAddress localIP = WiFi.localIP();
+  Serial.printf("[ArtNet] ArtPollReply → %s  uni=%u\n",
+                dest.toString().c_str(),
+                artnetPatchCount > 0 ? artnetPatches[0].universe : 0);
 
   uint8_t mac[6] = {};
   sscanf(ownMAC, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -202,7 +206,7 @@ static void artnet_sendPollReply(IPAddress dest) {
 
 // ── Art-Net packet parser ─────────────────────────────────────────
 // Spec: http://www.artisticlicence.com/ArtNetSpec.pdf  §Table 1
-static void artnet_parsePacket(uint8_t* data, size_t len) {
+static void artnet_parsePacket(uint8_t* data, size_t len, IPAddress sender) {
   if (len < 12) return;
   // ID: "Art-Net\0"
   if (memcmp(data, "Art-Net\0", 8) != 0) return;
@@ -210,7 +214,8 @@ static void artnet_parsePacket(uint8_t* data, size_t len) {
   uint16_t opcode = (uint16_t)data[8] | ((uint16_t)data[9] << 8);
 
   if (opcode == 0x2000) {                              // ArtPoll — reply and return
-    artnet_sendPollReply(_artnetUdp.remoteIP());
+    Serial.printf("[ArtNet] ArtPoll from %s\n", sender.toString().c_str());
+    artnet_sendPollReply(sender);
     return;
   }
   if (opcode != 0x5000) return;                        // not ArtDmx — ignore
@@ -252,10 +257,12 @@ void artnet_receiver_setup() {
 void artnet_receiver_loop() {
   int sz = _artnetUdp.parsePacket();
   if (sz > 0) {
-    artnetSenderIP = _artnetUdp.remoteIP().toString();
+    // Capture sender before read() — remoteIP() may change after the buffer is consumed
+    IPAddress sender = _artnetUdp.remoteIP();
+    artnetSenderIP = sender.toString();
     static uint8_t buf[530];   // 18-byte Art-Net header + 512 DMX channels
     int n = _artnetUdp.read(buf, sizeof(buf));
-    if (n > 0) artnet_parsePacket(buf, (size_t)n);
+    if (n > 0) artnet_parsePacket(buf, (size_t)n, sender);
   }
 
   // ── Packet rate monitor — logs once per second ────────────────

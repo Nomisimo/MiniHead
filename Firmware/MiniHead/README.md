@@ -52,7 +52,7 @@
 | **WiFi multi-network** | Tries last-connected SSID first, falls back down a list |
 | **Theme system** | Swap the full UI look by renaming a header file and reflashing |
 | **Servo smoothing** | Exponential smoothing at 50 Hz with deadband — silent, jitter-free |
-| **Profiler plugin** | Optional: loop frequency, heap, FreeRTOS task stats over Serial |
+| **Debugger plugin** | Optional: log config UI + loop frequency, heap, FreeRTOS task stats over Serial |
 
 ---
 
@@ -174,7 +174,7 @@ cp config.example.h config.h
 //#define PLUGIN_STARTUP_ANIMATION  // Servo sweep + color test on first boot
 //#define PLUGIN_UDP_CONTROL        // Multi-head UDP discovery + leader election
 //#define PLUGIN_ARTNET             // Art-Net / DMX512 receiver
-//#define PLUGIN_PROFILER           // Loop timing + heap stats over Serial
+//#define PLUGIN_DEBUGGER           // Log config UI + loop timing + heap stats (must be last)
 //#define PLUGIN_BLE_PROVISION      // BLE GATT WiFi credential distribution
 
 // ── WiFi network list ─────────────────────────────────────────────
@@ -199,10 +199,10 @@ static const int WIFI_NETWORK_COUNT =
 ```
 
 **WiFi boot sequence:**
-1. Read `/wifi_last.json` — try that SSID first if visible
-2. Try remaining `WIFI_NETWORKS[]` entries in order
-3. Try all networks without scan filter (hidden SSIDs)
-4. After 2 failed cycles → start AP hotspot `MiniHead-XXYY` at `192.168.4.1`
+1. Read `/wifi_saved.json` (BLE-provisioned credentials) and try alongside `WIFI_NETWORKS[]`
+2. Read `/wifi_last.json` — try that SSID first if visible
+3. Try remaining entries in order, then without scan filter (hidden SSIDs)
+4. After 2 failed cycles → start AP hotspot `MiniHead-XXYY` at `192.168.4.1` *(Standalone mode only; UDP/Art-Net devices retry forever)*
 
 **Changing config.h always requires a full re-upload** (it's compiled in). LittleFS data (cues, patches, names) is preserved across uploads.
 
@@ -251,8 +251,7 @@ main/
     │   ├── discovery_stubs.h        ← Empty stubs when PLUGIN_UDP_CONTROL is off
     │   ├── html_page.h              ← Embedded main UI HTML (PROGMEM, layout only)
     │   ├── theme.h                  ← Active CSS theme (PROGMEM, served at GET /theme)
-    │   ├── log_config.h             ← Runtime log level configuration
-    │   └── log_panel_html.h         ← Log panel HTML
+    │   └── log_config.h             ← Runtime log level struct + load/save (always included)
     ├── udp_control/
     │   ├── udp_control.h            ← Plugin entry point
     │   └── discovery.h              ← Leader election, peer table, UDP CMD dispatcher
@@ -265,8 +264,8 @@ main/
     ├── ble_provision/
     │   ├── ble_provision.h          ← Full BLE GATT provisioning logic (SEEKER + SENDER)
     │   └── ble_provision_config.h   ← BLE service/characteristic UUIDs + timeouts
-    ├── profiler/
-    │   └── profiler.h               ← Loop timing, heap, FreeRTOS task stats (optional)
+    ├── debugger/
+    │   └── debugger.h               ← Log config HTTP UI + loop timing + heap stats (optional)
     └── shared/
         └── crypto.h                 ← AES-128-CBC + HMAC-SHA256 + key parser (shared)
 ```
@@ -341,7 +340,7 @@ The `PluginRegistrar` constructor appends `{setup, loop}` to the global `_plugin
 | **udp_control** | `PLUGIN_UDP_CONTROL` | UDP discovery beacons, leader election, peer table, CMD relay |
 | **artnet** | `PLUGIN_ARTNET` | Art-Net DMX512 receiver + HTTP patch management |
 | **ble_provision** | `PLUGIN_BLE_PROVISION` | Zero-touch WiFi credential distribution via Bluetooth GATT |
-| **profiler** | `PLUGIN_PROFILER` | Loop stats, heap, FreeRTOS task table over Serial |
+| **debugger** | `PLUGIN_DEBUGGER` | Log config web UI (`/api/logconfig`) + loop stats, heap, FreeRTOS task table over Serial. **Must be last in `config.h`.** |
 
 ---
 
@@ -471,11 +470,13 @@ Only available when `PLUGIN_ARTNET` is enabled.
 | Method | Path | Body (JSON) | Response | Description |
 |---|---|---|---|---|
 | `GET` | `/api/artnet/status` | — | `{"active":true,"patchCount":1,"r":255,"g":0,"b":0,"w":0,"pan":90,"tilt":45}` | Art-Net status + live DMX output |
-| `GET` | `/api/artnet/patch` | — | `[{"fixID":1,"universe":0,"startAddr":1}]` | Current patch assignments |
-| `POST` | `/api/artnet/patch` | `{"universe":0,"startAddr":1}` | `{"status":"ok"}` | Set own patch |
-| `PUT` | `/api/artnet/patch/*` | `{"universe":0,"startAddr":8}` | `{"status":"ok"}` | Update universe/address (pass -1 to leave unchanged) |
+| `GET` | `/api/artnet/patch` | — | `[{"fixID":1,"universe":1,"startAddr":1}]` | Current patch assignments |
+| `POST` | `/api/artnet/patch` | `{"universe":1,"startAddr":1}` | `{"status":"ok"}` | Set own patch |
+| `PUT` | `/api/artnet/patch/*` | `{"universe":1,"startAddr":8}` | `{"status":"ok"}` | Update universe/address (pass -1 to leave unchanged) |
 | `DELETE` | `/api/artnet/patch` | — | `{"status":"ok"}` | Clear all patches |
-| `POST` | `/api/artnet/patch/bulk` | `{"universe":0,"startAddr":1,"count":4,"firstFixID":1}` | `{"status":"ok"}` | Auto-assign patches to N consecutive fixtures starting at firstFixID |
+| `POST` | `/api/artnet/patch/bulk` | `{"universe":1,"startAddr":1,"count":4,"firstFixID":1}` | `{"status":"ok"}` | Auto-assign patches to N consecutive fixtures starting at firstFixID |
+
+> Universe must be **1–32767**. Universe 0 is rejected at all API layers.
 
 **DMX fixture footprint (7 channels):**
 
@@ -499,8 +500,8 @@ These routes always operate on the local device (no leader redirect):
 |---|---|---|---|---|
 | `POST` | `/api/config/fixid` | `{"fixID":1}` | `{"status":"ok"}` | Set this device's fixture ID (persists to `/discovery.json`) |
 | `POST` | `/api/config/name` | `{"name":"Stage Left"}` | `{"status":"ok"}` | Set this device's display name |
-| `GET` | `/api/logconfig` | — | log config JSON | Get runtime log levels |
-| `POST` | `/api/logconfig` | log config JSON | `{"status":"ok"}` | Set runtime log levels |
+| `GET` | `/api/logconfig` | — | log config JSON | Get runtime log levels *(requires `PLUGIN_DEBUGGER`)* |
+| `POST` | `/api/logconfig` | log config JSON | `{"status":"ok"}` | Set runtime log levels *(requires `PLUGIN_DEBUGGER`)* |
 
 ---
 
@@ -513,12 +514,12 @@ When `PLUGIN_UDP_CONTROL` is enabled, devices broadcast discovery beacons and li
 Sent every 2000 ms as a UTF-8 string broadcast to the subnet:
 
 ```
-MINIHEAD|AA:BB:CC:DD:EE:FF|192.168.1.100|1|LEADER|Head 1|UDP
-          ─────MAC──────── ──────IP───── ^ ──────  ──────  ───
-                                         fixID    name    mode
+MINIHEAD|AA:BB:CC:DD:EE:FF|192.168.1.100|1|LEADER|Head 1|UDP|100
+          ─────MAC──────── ──────IP───── ^ ──────  ──────  ───  ───
+                                         fixID    name    mode  priority
 ```
 
-`mode` is `UDP` or `ARTNET`. `role` is `LEADER` or `FOLLOWER`.
+`mode` is `UDP` or `ARTNET`. `role` is `LEADER` or `FOLLOWER`. `priority`: `0` = PC App, `100` = ESP. Older firmware without the priority field defaults to `100` for backward compatibility.
 
 A peer is considered stale after **90 seconds** without a beacon.
 
@@ -540,8 +541,8 @@ SETPATCH|fixID|universe|addr      → set Art-Net patch on target
 ### Leader election
 
 1. Each device listens on port 4210 for 4 seconds at boot
-2. Lowest MAC wins — `00:00:00:00:00:PC` (PC Leader App) always wins
-3. Followers redirect their web UI requests to the leader
+2. Lowest **priority** wins (`0` = PC App, `100` = ESP); MAC is the tiebreaker among equal-priority nodes — the PC App always beats any ESP
+3. Followers redirect their web UI requests to the leader (port 8080 if PC App, port 80 if ESP)
 4. If leader goes silent for > 90 s, a new election happens after a 10 s hold
 
 ---
@@ -574,7 +575,7 @@ This allows devices with **no WiFi credentials** (empty `WIFI_NETWORKS[]`) to re
 
 | Role | Condition | Behaviour |
 |---|---|---|
-| **SEEKER** | `WIFI_NETWORK_COUNT == 0` and no `/wifi_provision.json` | BLE scan loop; on finding a SENDER: connects, reads characteristic, verifies HMAC, decrypts, saves credentials, reboots |
+| **SEEKER** | `WIFI_NETWORK_COUNT == 0` and no `/wifi_provision.json` and no `/wifi_saved.json` | BLE scan loop; on finding a SENDER: connects, reads characteristic, verifies HMAC, decrypts, saves credentials to `/wifi_provision.json`, reboots |
 | **SENDER** | Connected to WiFi via STA | Starts a GATT server in a background task; advertises encrypted SSID+PW for `PROVISION_SENDER_MS`; then deinits BLE automatically |
 
 ### Security
@@ -599,15 +600,19 @@ This allows devices with **no WiFi credentials** (empty `WIFI_NETWORKS[]`) to re
 ### Boot flow with provisioning enabled
 
 ```
-Device with credentials:            Device without credentials:
+Device with credentials:            Device without credentials (first time):
   boot → ble_provision_pre_wifi()     boot → ble_provision_pre_wifi()
   → already has creds → no-op         → SEEKER: BLE scan loop
   wifi_connectMulti() → connected       ↓ finds SENDER GATT service
   plugin setup() → SENDER task starts   ↓ reads + verifies payload
   advertises encrypted creds → →      credentials verified (HMAC + AES decrypt)
-  stops after PROVISION_SENDER_MS     saved to /wifi_provision.json
-                                        ESP.restart()
-                                        boot → wifi_connectMulti() → connected ✓
+  stops after PROVISION_SENDER_MS     saved to /wifi_provision.json → reboot
+                                        boot → wifi_connectMulti()
+                                          reads /wifi_provision.json
+                                          copies to /wifi_saved.json (permanent)
+                                          deletes /wifi_provision.json
+                                        → connected ✓
+                                        All subsequent boots: uses /wifi_saved.json
                                         plugin_setup() → also SENDER now
 ```
 
@@ -615,7 +620,7 @@ Device with credentials:            Device without credentials:
 
 ## 12. PC Leader App
 
-`PC APP/pc_leader.py` — Python/Flask server that acts as the permanent network leader. ESP devices detect it and yield to it automatically.
+`PC App/server.py` — Python/Flask server that acts as the permanent network leader. ESP devices detect it and yield to it automatically.
 
 ### Requirements
 
@@ -626,8 +631,8 @@ pip install flask
 ### Start
 
 ```bash
-cd "PC APP"
-python3 pc_leader.py
+cd "PC App"
+python3 server.py
 ```
 
 Open **http://localhost:8080**
@@ -679,7 +684,8 @@ All files survive firmware uploads. To wipe, use **Tools → ESP32 Sketch Data U
 | File | Format | Contents |
 |---|---|---|
 | `/wifi_last.json` | `{"ssid":"YourSSID"}` | Last successfully connected SSID |
-| `/wifi_provision.json` | `{"ssid":"…","pass":"…"}` | Credentials received via BLE provisioning (deleted after successful connect) |
+| `/wifi_provision.json` | `{"ssid":"…","pass":"…"}` | One-time BLE provisioning transport — deleted on first successful connect after credentials are copied to `/wifi_saved.json` |
+| `/wifi_saved.json` | `{"ssid":"…","pass":"…"}` | Permanent BLE-provisioned credentials — used on every boot like a runtime `WIFI_NETWORKS[]` entry |
 | `/discovery.json` | `{"fixID":1,"name":"Head 1"}` | Fixture ID and display name |
 | `/cues.json` | JSON array | Up to 32 saved cues |
 | `/artnet.json` | JSON array | Art-Net patch assignments |

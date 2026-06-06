@@ -51,21 +51,26 @@ bool apPasswordSet = false;   // true when AP has a password ≥8 chars
 static bool requireLeader(AsyncWebServerRequest* req) {
   if (_serverActive) return true;
 
-  String leaderIP = "";
+  String leaderIP  = "";
+  bool   leaderIsPC = false;
   for (int i = 0; i < peerCount; i++) {
     if (peers[i].active && peers[i].role == ROLE_LEADER) {
-      leaderIP = String(peers[i].ip); break;
+      leaderIP   = String(peers[i].ip);
+      leaderIsPC = (peers[i].priority == 0);
+      break;
     }
   }
 
   if (leaderIP.length() > 0) {
-    String clientIP = req->client()->remoteIP().toString();
-    if (clientIP == leaderIP) {
-      // Browser is running on the leader PC itself → go to local PC App
-      req->redirect("http://127.0.0.1:8080");
+    if (leaderIsPC) {
+      // PC App is leader — runs on port 8080.
+      // Browser on the same machine as the PC App → use localhost.
+      String clientIP = req->client()->remoteIP().toString();
+      if (clientIP == leaderIP) req->redirect("http://127.0.0.1:8080");
+      else                      req->redirect("http://" + leaderIP + ":8080");
     } else {
-      // Remote device (phone/tablet) → redirect to leader's LAN address
-      req->redirect("http://" + leaderIP + ":8080");
+      // Another ESP is leader — its Web UI is on port 80.
+      req->redirect("http://" + leaderIP);
     }
     return false;
   }
@@ -84,6 +89,7 @@ struct Cue {
 };
 Cue cues[MAX_CUES];
 int cueCount = 0;
+static unsigned long _cueIdSeq = 0;
 
 bool seqRunning  = false;
 unsigned long seqInterval = 1000;
@@ -122,7 +128,7 @@ void loadCuesFromFlash() {
   for (JsonObject o : doc.as<JsonArray>()) {
     if (cueCount >= MAX_CUES) break;
     Cue& c = cues[cueCount];
-    c.id = o["id"] | (unsigned long)millis();
+    c.id = o["id"] | (unsigned long)0;
     strlcpy(c.name, o["name"] | "Cue", sizeof(c.name));
     c.r    = constrain((int)(o["r"]    | 0),  0, 255);
     c.g    = constrain((int)(o["g"]    | 0),  0, 255);
@@ -138,6 +144,9 @@ void loadCuesFromFlash() {
     if (c.targetCount == 0) { c.fixTargets[0] = 0; c.targetCount = 1; }
     cueCount++;
   }
+  // Seed the ID counter above the highest loaded ID to avoid collisions on new saves
+  for (int i = 0; i < cueCount; i++)
+    if (cues[i].id > _cueIdSeq) _cueIdSeq = cues[i].id;
   Serial.printf("[WiFi] Loaded %d cue(s) from /cues.json\n", cueCount);
 }
 
@@ -175,8 +184,7 @@ void sendJson(AsyncWebServerRequest* req, int code, const String& json) {
 }
 
 static void sendHtmlProgmem(AsyncWebServerRequest* req,
-                            const char* progmemStr,
-                            bool /*noCache*/ = false) {
+                            const char* progmemStr) {
   // Always no-store: ESPAsyncWebServer doesn't send ETag/Last-Modified so
   // browsers mishandle conditional GETs on reload — panels stop loading.
   AsyncWebServerResponse* r = req->beginResponse_P(200, "text/html", progmemStr);
@@ -231,7 +239,24 @@ void fireCueToTargets(const Cue& c) {
 
 // ── Route handlers ────────────────────────────────────────────────
 
-void handleRoot(AsyncWebServerRequest* req)           { if (!requireLeader(req)) return; sendHtmlProgmem(req, INDEX_HTML); }
+void handleRoot(AsyncWebServerRequest* req) {
+#ifdef PLUGIN_ARTNET
+  // Art-Net mode: never serve the ESP Web UI — redirect to the PC App.
+  // Use 127.0.0.1 when the browser is running on the same machine as the
+  // Art-Net sender; use the sender's LAN IP for any other device.
+  String target = "http://127.0.0.1:8080";
+  if (artnetSenderIP.length() > 0) {
+    String clientIP = req->client()->remoteIP().toString();
+    target = (clientIP == artnetSenderIP)
+             ? "http://127.0.0.1:8080"
+             : "http://" + artnetSenderIP + ":8080";
+  }
+  req->redirect(target);
+  return;
+#endif
+  if (!requireLeader(req)) return;
+  sendHtmlProgmem(req, INDEX_HTML);
+}
 
 static String _wifiIP() {
   IPAddress ip = WiFi.localIP();
@@ -248,7 +273,7 @@ void handleStatus(AsyncWebServerRequest* req) {
               + "}";
   sendJson(req, 200, json);
 }
-void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"4.2\"}"); }
+void handleVersion(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"version\":\"" FIRMWARE_VERSION_SHORT "\"}"); }
 void handlePorts(AsyncWebServerRequest* req)      { sendJson(req, 200, "[{\"port\":\"WiFi\",\"description\":\"ESP32 @ "+_wifiIP()+"\"}]"); }
 void handleConnect(AsyncWebServerRequest* req)    { sendJson(req, 200, "{\"status\":\"ok\",\"port\":\"WiFi\"}"); }
 void handleDisconnect(AsyncWebServerRequest* req) { sendJson(req, 200, "{\"status\":\"ok\"}"); }
@@ -469,7 +494,7 @@ void handleSaveCue(AsyncWebServerRequest* req) {
   JsonDocument doc;
   if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
   Cue& c = cues[cueCount];
-  c.id = millis();
+  c.id = ++_cueIdSeq;
   strlcpy(c.name, doc["name"] | "Cue", sizeof(c.name));
   c.r    = constrain((int)doc["r"],    0, 255);
   c.g    = constrain((int)doc["g"],    0, 255);
@@ -758,8 +783,8 @@ void setupRoutes() {
 
 void wifi_control_setup() {
 #ifdef PLUGIN_ARTNET
-  // Art-Net mode: start the FULL HTTP server so the web UI is accessible
-  // for standalone operation (Demo, Blackout, Speed, cues) without a PC App.
+  // Art-Net mode: start the HTTP server for config/API endpoints.
+  // handleRoot() redirects browsers to the PC App instead of serving the UI.
   // ArtNet reception runs independently on UDP port 6454 — no conflict.
   _serverActive = true;
   logcfg_load();

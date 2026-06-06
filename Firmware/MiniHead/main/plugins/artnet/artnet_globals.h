@@ -36,3 +36,4 @@ extern ArtnetPatch   artnetPatches[MAX_PATCHES];
 extern int           artnetPatchCount;
 extern bool          artnetActive;
 extern unsigned long artnetLastPacket;
+extern String        artnetSenderIP;  // IP of last Art-Net sender (PC App)

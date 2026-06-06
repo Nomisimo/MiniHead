@@ -15,6 +15,7 @@
 NodeRole nodeRole   = ROLE_UNDECIDED;
 char ownMAC[18]     = "";
 char ownIP[16]      = "";
+char ownMode[8]     = "UDP";
 int  ownFixID       = 0;
 char ownName[32]    = "";
 Peer peers[MAX_PEERS];
@@ -57,24 +58,34 @@ Peer* discovery_findPeer(const char* mac) {
   return nullptr;
 }
 
-Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "") {
+Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "", int priority = 100) {
   Peer* p = discovery_findPeer(mac);
   if (!p) {
-    if (peerCount >= MAX_PEERS) {
-      Serial.printf("[Discovery] WARNING: peer table full (%d/%d) — %s ignored\n", peerCount, MAX_PEERS, mac);
-      return nullptr;
+    for (int i = 0; i < peerCount; i++) {
+      if (!peers[i].active) { memset(&peers[i], 0, sizeof(peers[i])); p = &peers[i]; break; }
     }
-    p = &peers[peerCount++];
+    if (!p) {
+      if (peerCount >= MAX_PEERS) return nullptr;
+      p = &peers[peerCount++];
+    }
     strncpy(p->mac, mac, 17); p->mac[17] = 0;
     p->name[0] = 0;
   }
   strncpy(p->ip, ip, 15); p->ip[15] = 0;
   if (name && name[0]) strlcpy(p->name, name, sizeof(p->name));
   p->fixID    = fixID;
+  p->priority = priority;
   p->role     = role;
   p->lastSeen = millis();
   p->active   = true;
   return p;
+}
+
+// Returns true if candidate A is a better leader than candidate B.
+// Lower priority wins; MAC is the tiebreaker among equal-priority nodes.
+static bool _betterCandidate(int priA, const char* macA, int priB, const char* macB) {
+  if (priA != priB) return priA < priB;
+  return strcmp(macA, macB) < 0;
 }
 
 void discovery_pruneStale() {
@@ -94,24 +105,29 @@ bool discovery_leaderAlive() {
 }
 
 // ── Election ──────────────────────────────────────────────────────
-// Winner = lowest MAC string (lexicographic).
-// PC always wins — its fake MAC "00:00:00:00:00:PC" sorts below
-// any real ESP32 MAC (digits < letters in ASCII).
+// Winner = lowest priority (0 = PC App, 100 = ESP); MAC is the tiebreaker
+// among equal-priority nodes so ESP-only rigs remain deterministic.
 
 void discovery_elect() {
-  struct Candidate { char mac[18]; };
+  discovery_pruneStale();  // exclude timed-out peers before building candidate list
+
+  struct Candidate { char mac[18]; int priority; };
   Candidate candidates[MAX_PEERS + 1];
   int n = 0;
 
-  strncpy(candidates[n].mac, ownMAC, 17); candidates[n].mac[17] = 0; n++;
+  strncpy(candidates[n].mac, ownMAC, 17); candidates[n].mac[17] = 0;
+  candidates[n].priority = 100; n++;
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active) continue;
-    strncpy(candidates[n].mac, peers[i].mac, 17); candidates[n].mac[17] = 0; n++;
+    strncpy(candidates[n].mac, peers[i].mac, 17); candidates[n].mac[17] = 0;
+    candidates[n].priority = peers[i].priority; n++;
   }
 
   int winIdx = 0;
   for (int i = 1; i < n; i++)
-    if (strcmp(candidates[i].mac, candidates[winIdx].mac) < 0) winIdx = i;
+    if (_betterCandidate(candidates[i].priority, candidates[i].mac,
+                         candidates[winIdx].priority, candidates[winIdx].mac))
+      winIdx = i;
 
   bool iAmLeader = (strcmp(candidates[winIdx].mac, ownMAC) == 0);
 
@@ -123,7 +139,8 @@ void discovery_elect() {
     else                    { wifi_control_promote(); }   // already started as follower → activate APIs
   } else if (!iAmLeader && nodeRole != ROLE_FOLLOWER) {
     nodeRole = ROLE_FOLLOWER;
-    Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s\n", candidates[winIdx].mac);
+    Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s (priority %d)\n",
+                  candidates[winIdx].mac, candidates[winIdx].priority);
     // Start server even as a follower so browsers get a redirect instead of
     // "connection refused" — prevents "Network heads plugin not available" errors.
     if (!_webServerStarted) { wifi_control_setup_follower(); _webServerStarted = true; }
@@ -134,9 +151,9 @@ void discovery_elect() {
 // ── Beacon ────────────────────────────────────────────────────────
 
 void discovery_sendBeacon() {
-  char pkt[160];
+  char pkt[192];
   const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
-  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s|%s", ownMAC, ownIP, ownFixID, roleStr, ownName, ownMode);
+  snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s|%s|%d", ownMAC, ownIP, ownFixID, roleStr, ownName, ownMode, 100);
   // Use directed subnet broadcast (e.g. 192.168.178.255) instead of
   // 255.255.255.255 — Fritz!Box and similar routers don't reliably
   // forward limited broadcasts across WiFi→Ethernet boundaries.
@@ -145,6 +162,14 @@ void discovery_sendBeacon() {
                    _ip[2]|(uint8_t)~_mask[2], _ip[3]|(uint8_t)~_mask[3]);
   _beaconUDP.beginPacket(_bcast, BEACON_PORT);
   _beaconUDP.print(pkt); _beaconUDP.endPacket();
+  // Unicast to every known leader — guarantees delivery once their IP is known.
+  // Many APs silently drop broadcast after the initial ARP exchange.
+  for (int i = 0; i < peerCount; i++) {
+    if (peers[i].active && peers[i].role == ROLE_LEADER) {
+      _beaconUDP.beginPacket(peers[i].ip, BEACON_PORT);
+      _beaconUDP.print(pkt); _beaconUDP.endPacket();
+    }
+  }
 }
 
 void discovery_parseBeacon(const char* data, int len) {
@@ -153,26 +178,30 @@ void discovery_parseBeacon(const char* data, int len) {
   memcpy(buf, data, len); buf[len] = 0;
   if (strncmp(buf, "MINIHEAD|", 9) != 0) return;
 
-  // Beacon fields after "MINIHEAD|": MAC|IP|fixID|ROLE|NAME|MODE
-  char* fields[7]; int fi = 0;
+  // Beacon fields after "MINIHEAD|": MAC|IP|fixID|ROLE|NAME|MODE|PRIORITY
+  char* fields[8]; int fi = 0;
   char* tok = strtok(buf + 9, "|");
-  while (tok && fi < 7) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
+  while (tok && fi < 8) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
   if (fi < 4) return;
 
-  const char* mac   = fields[0];
-  const char* ip    = fields[1];
-  int         fixID = atoi(fields[2]);
-  NodeRole    role  = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
-  const char* name  = (fi >= 5) ? fields[4] : "";
-  const char* mode  = (fi >= 6) ? fields[5] : "";
+  const char* mac      = fields[0];
+  const char* ip       = fields[1];
+  int         fixID    = atoi(fields[2]);
+  NodeRole    role     = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
+  const char* name     = (fi >= 5) ? fields[4] : "";
+  const char* mode     = (fi >= 6) ? fields[5] : "";
+  int         priority = (fi >= 7) ? atoi(fields[6]) : 100;  // default 100 = ESP
 
   if (strcmp(mac, ownMAC) == 0) return;
 
-  discovery_addOrUpdate(mac, ip, fixID, role, name, mode);
+  discovery_addOrUpdate(mac, ip, fixID, role, name, priority);
   if (logCfg.discoveryBeacons)
-    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"  mode:%s\n", mac, ip, fixID, fields[3], name, mode);
+    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"  mode:%s  pri:%d\n",
+                  mac, ip, fixID, fields[3], name, mode, priority);
 
-  if (nodeRole == ROLE_LEADER && role == ROLE_LEADER)
+  // Re-elect any time we see a peer that could beat us — don't wait for them
+  // to claim LEADER; they may still be in their boot listen phase.
+  if (nodeRole == ROLE_LEADER && _betterCandidate(priority, mac, 100, ownMAC))
     discovery_elect();
 }
 
@@ -193,7 +222,7 @@ void discovery_setup() {
   while (millis() < listenEnd) {
     int sz = _beaconUDP.parsePacket();
     if (sz > 0) {
-      char buf[128]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
+      char buf[192]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
       discovery_parseBeacon(buf, n);
     }
     sled_peerListen(millis());
@@ -215,7 +244,7 @@ void discovery_setup() {
 void discovery_loop() {
   int sz = _beaconUDP.parsePacket();
   if (sz > 0) {
-    char buf[128]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
+    char buf[192]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
     discovery_parseBeacon(buf, n);
   }
 
@@ -237,13 +266,14 @@ void discovery_loop() {
     }
   }
 
-  // Safety net: if we think we're LEADER but a peer with lower MAC is also
-  // broadcasting LEADER, yield immediately (handles missed beacon edge cases).
+  // Safety net: if we think we're LEADER but an active peer would beat us,
+  // yield immediately — catches missed beacons and boot-phase FOLLOWER ads.
   if (nodeRole == ROLE_LEADER) {
     for (int i = 0; i < peerCount; i++) {
-      if (peers[i].active && peers[i].role == ROLE_LEADER &&
-          strcmp(peers[i].mac, ownMAC) < 0) {
-        if (logCfg.discoveryEvents) Serial.printf("[Discovery] Better leader %s active — yielding\n", peers[i].mac);
+      if (peers[i].active && _betterCandidate(peers[i].priority, peers[i].mac, 100, ownMAC)) {
+        if (logCfg.discoveryEvents)
+          Serial.printf("[Discovery] Better candidate %s (priority %d) active — yielding\n",
+                        peers[i].mac, peers[i].priority);
         discovery_elect();
         break;
       }

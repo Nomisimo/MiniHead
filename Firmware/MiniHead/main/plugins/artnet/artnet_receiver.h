@@ -24,6 +24,7 @@ ArtnetPatch   artnetPatches[MAX_PATCHES];
 int           artnetPatchCount  = 0;
 bool          artnetActive      = false;
 unsigned long artnetLastPacket  = 0;
+String        artnetSenderIP    = "";
 
 static WiFiUDP _artnetUdp;
 
@@ -59,8 +60,11 @@ void artnet_loadPatches() {
   }
   for (JsonObject o : doc.as<JsonArray>()) {
     if (artnetPatchCount >= MAX_PATCHES) break;
-    artnetPatches[artnetPatchCount].universe  = o["universe"]  | 0;
-    artnetPatches[artnetPatchCount].startAddr = o["startAddr"] | 1;
+    uint16_t uni  = o["universe"]  | 0;
+    uint16_t addr = o["startAddr"] | 1;
+    if (uni < 1) { Serial.println("[ArtNet] Skipping stored patch with universe 0 — invalid"); continue; }
+    artnetPatches[artnetPatchCount].universe  = uni;
+    artnetPatches[artnetPatchCount].startAddr = addr;
     artnetPatchCount++;
   }
   Serial.printf("[ArtNet] Loaded %d patch(es) from /artnet.json\n", artnetPatchCount);
@@ -186,6 +190,7 @@ void artnet_receiver_setup() {
 void artnet_receiver_loop() {
   int sz = _artnetUdp.parsePacket();
   if (sz > 0) {
+    artnetSenderIP = _artnetUdp.remoteIP().toString();
     static uint8_t buf[530];   // 18-byte Art-Net header + 512 DMX channels
     int n = _artnetUdp.read(buf, sizeof(buf));
     if (n > 0) artnet_parsePacket(buf, (size_t)n);

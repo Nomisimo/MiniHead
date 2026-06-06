@@ -19,6 +19,7 @@ struct Peer {
   char name[32];
   char mode[8];    // "UDP" or "ARTNET"
   int  fixID;
+  int  priority;   // 0 = PC App, 100 = ESP; lower wins election
   NodeRole role;
   unsigned long lastSeen;
   bool active;

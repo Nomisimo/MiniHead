@@ -15,11 +15,13 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   .an-num{width:52px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:var(--mono);font-size:12px;border-radius:3px;text-align:center;-moz-appearance:textfield;}
   .an-num::-webkit-outer-spin-button,.an-num::-webkit-inner-spin-button{-webkit-appearance:none;}
   .an-uni-nav{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
-  #an_grid{display:grid;grid-template-columns:repeat(32,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px;cursor:crosshair;}
-  .an-cell{aspect-ratio:1;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:filter 0.08s;font-size:9px;color:rgba(0,0,0,0.8);font-family:var(--mono);font-weight:700;line-height:1;user-select:none;}
+  #an_grid{display:grid;grid-template-columns:repeat(32,minmax(18px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px;cursor:crosshair;}
+  .an-cell{aspect-ratio:1;min-width:18px;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:filter 0.08s;font-size:9px;color:rgba(0,0,0,0.8);font-family:var(--mono);font-weight:700;line-height:1;user-select:none;}
   .an-cell:hover{filter:brightness(1.5);}
-  .net-btn{padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:all 0.15s;text-transform:uppercase;touch-action:manipulation;}
-  .net-btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08);}
+  .net-btn{padding:5px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:3px;touch-action:manipulation;transition:border-color 0.1s,color 0.1s,opacity 0.1s;}
+  .net-btn:hover{border-color:var(--text-dim);}
+  .net-btn:active{opacity:0.65;}
+  .net-btn.primary{border-color:var(--accent);color:var(--accent);}
   .net-btn.sm{padding:3px 8px;font-size:10px;}
 </style>
 
@@ -29,7 +31,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 <div class="an-row">
   <span class="an-label">Bulk:</span>
   <span class="an-label">Uni</span>
-  <input type="number" id="an_bulkUni" class="an-num" value="0" min="0" max="32767">
+  <input type="number" id="an_bulkUni" class="an-num" value="1" min="1" max="32767">
   <span class="an-label">.</span>
   <span class="an-label">Addr</span>
   <input type="number" id="an_bulkAddr" class="an-num" value="1" min="1" max="512">
@@ -50,8 +52,8 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 <!-- Universe navigation -->
 <div class="an-uni-nav">
   <span class="an-label">Universe</span>
-  <input type="number" id="an_uniInput" class="an-num" value="0" min="0" max="32767"
-    onchange="an_gotoUniverse(parseInt(this.value)||0)">
+  <input type="number" id="an_uniInput" class="an-num" value="1" min="1" max="32767"
+    onchange="an_gotoUniverse(parseInt(this.value)||1)">
   <button class="net-btn sm" onclick="an_prevUniverse()">&#9664;</button>
   <button class="net-btn sm" onclick="an_nextUniverse()">&#9654;</button>
   <span class="an-label" id="an_uniInfo" style="margin-left:auto;"></span>
@@ -64,7 +66,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 (function(){
   var DMX_FP = 7;
   var an_patches = [], an_fixtures = [];
-  var an_curUni = 0;
+  var an_curUni = 1;
   // Own patch colour — single fixture per ESP, no fixID in patch any more.
   var OWN_PATCH_COLOR     = 'hsl(200,68%,52%)';
   var OWN_PATCH_COLOR_DIM = 'hsla(200,68%,38%,0.35)';
@@ -80,7 +82,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   }
 
   function an_gotoUniverse(uni){
-    an_curUni = Math.max(0, Math.min(32767, uni));
+    an_curUni = Math.max(1, Math.min(32767, uni));
     document.getElementById('an_uniInput').value = an_curUni;
     an_renderGrid();
   }
@@ -175,7 +177,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   };
 
   window.an_bulk=function(){
-    var uni   = parseInt(document.getElementById('an_bulkUni').value)   || 0;
+    var uni   = parseInt(document.getElementById('an_bulkUni').value)   || 1;
     var addr  = parseInt(document.getElementById('an_bulkAddr').value)  || 1;
     var count = parseInt(document.getElementById('an_bulkCount').value) || 1;
     var fix   = parseInt(document.getElementById('an_bulkFix').value)   || 1;
@@ -194,7 +196,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   window.an_patchSelected = function(){
     var ids = (typeof nh_getSelectedFixIDs==='function') ? nh_getSelectedFixIDs() : [];
     if(!ids.length){ if(typeof toast==='function') toast('No heads selected in Network panel','err'); return; }
-    var uni  = parseInt(document.getElementById('an_bulkUni').value)  || 0;
+    var uni  = parseInt(document.getElementById('an_bulkUni').value)  || 1;
     var addr = parseInt(document.getElementById('an_bulkAddr').value) || 1;
     var skipped = 0;
     var toPost = [];

@@ -19,6 +19,10 @@
 // artnet_savePatches() and artnet_loadPatches() live in artnet_receiver.h
 // so they are available on ALL nodes (leader + follower).
 void artnet_upsertPatch(uint16_t universe, uint16_t startAddr) {
+  if (universe < 1) {
+    Serial.println("[ArtNet] upsertPatch: universe 0 rejected");
+    return;
+  }
   artnetPatches[0].universe  = universe;
   artnetPatches[0].startAddr = startAddr;
   artnetPatchCount = 1;
@@ -70,6 +74,10 @@ void handlePostArtnetPatch(AsyncWebServerRequest* req) {
   }
   int universe  = doc["universe"]  | 0;
   int startAddr = doc["startAddr"] | 1;
+  if (universe < 1 || universe > 32767) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid universe — must be 1–32767\"}");
+    return;
+  }
   if (startAddr < 1 || startAddr + DMX_FOOTPRINT - 1 > DMX_CHANNELS) {
     sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid startAddr\"}");
     return;
@@ -89,7 +97,7 @@ void handleUpdateArtnetPatch(AsyncWebServerRequest* req) {
   }
   int universe  = doc["universe"]  | -1;
   int startAddr = doc["startAddr"] | -1;
-  if (universe  >= 0) artnetPatches[0].universe  = (uint16_t)universe;
+  if (universe  >= 1 && universe <= 32767) artnetPatches[0].universe = (uint16_t)universe;
   if (startAddr >= 1 && startAddr + DMX_FOOTPRINT - 1 <= DMX_CHANNELS)
     artnetPatches[0].startAddr = (uint16_t)startAddr;
   artnet_savePatches();
@@ -138,6 +146,10 @@ void handleBulkArtnetPatch(AsyncWebServerRequest* req) {
   int count      = doc["count"]      | 0;
   int firstFixID = doc["firstFixID"] | 1;
 
+  if (universe < 1 || universe > 32767) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid universe — must be 1–32767\"}");
+    return;
+  }
   if (count <= 0 || firstFixID <= 0 || startAddr < 1) {
     sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Invalid parameters\"}");
     return;

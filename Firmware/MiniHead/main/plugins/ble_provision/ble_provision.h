@@ -23,7 +23,7 @@
 #include "../../plugin_registry.h"
 #include "../storage/storage.h"
 #include "ble_provision_config.h"
-#include "crypto.h"
+#include "../shared/crypto.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -47,27 +47,6 @@
 static uint8_t _blep_keyAes[16]  = {};
 static uint8_t _blep_keyHmac[32] = {};
 static bool    _blep_keyParsed   = false;
-
-static bool _blep_parseKey() {
-    if (_blep_keyParsed) return true;
-    const char* hex = PROVISION_KEY;
-    if (strlen(hex) != 32) return false;
-    for (int i = 0; i < 16; i++) {
-        auto nibble = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            return -1;
-        };
-        int hi = nibble(hex[i * 2]), lo = nibble(hex[i * 2 + 1]);
-        if (hi < 0 || lo < 0) return false;
-        _blep_keyAes[i] = (uint8_t)((hi << 4) | lo);
-    }
-    memcpy(_blep_keyHmac,      _blep_keyAes, 16);
-    memcpy(_blep_keyHmac + 16, _blep_keyAes, 16);
-    _blep_keyParsed = true;
-    return true;
-}
 
 // ── Payload builder (SENDER) ──────────────────────────────────────
 // Format: magic(2) + version(1) + role(1) + nonce(8) + IV(16) +
@@ -211,7 +190,7 @@ static void ble_provision_pre_wifi() {
     }
     if (WIFI_NETWORK_COUNT > 0 || hasProvFile) return;
 
-    if (!_blep_parseKey()) {
+    if (!crypto_parse_provision_key(PROVISION_KEY, _blep_keyAes, _blep_keyHmac, _blep_keyParsed)) {
         Serial.println("[PROVISION] Invalid PROVISION_KEY — SEEKER skipped");
         return;
     }
@@ -301,7 +280,7 @@ static void ble_provision_pre_wifi() {
 static void ble_provision_setup() {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    if (!_blep_parseKey()) {
+    if (!crypto_parse_provision_key(PROVISION_KEY, _blep_keyAes, _blep_keyHmac, _blep_keyParsed)) {
         Serial.println("[PROVISION] Invalid PROVISION_KEY — SENDER skipped");
         return;
     }

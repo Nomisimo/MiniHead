@@ -52,8 +52,8 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 <!-- Universe navigation -->
 <div class="an-uni-nav">
   <span class="an-label">Universe</span>
-  <input type="number" id="an_uniInput" class="an-num" value="1" min="1" max="32767"
-    onchange="an_gotoUniverse(parseInt(this.value)||1)">
+  <input type="number" id="an_uniInput" class="an-num" value="0" min="0" max="32767"
+    onchange="an_gotoUniverse(parseInt(this.value)||0)">
   <button class="net-btn sm" onclick="an_prevUniverse()">&#9664;</button>
   <button class="net-btn sm" onclick="an_nextUniverse()">&#9654;</button>
   <span class="an-label" id="an_uniInfo" style="margin-left:auto;"></span>
@@ -66,7 +66,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
 (function(){
   var DMX_FP = 7;
   var an_patches = [], an_fixtures = [];
-  var an_curUni = 1;
+  var an_curUni = 0;
   // Own patch colour — single fixture per ESP, no fixID in patch any more.
   var OWN_PATCH_COLOR     = 'hsl(200,68%,52%)';
   var OWN_PATCH_COLOR_DIM = 'hsla(200,68%,38%,0.35)';
@@ -82,7 +82,7 @@ const char ARTNET_PANEL_HTML[] PROGMEM = R"=====(
   }
 
   function an_gotoUniverse(uni){
-    an_curUni = Math.max(1, Math.min(32767, uni));
+    an_curUni = Math.max(0, Math.min(32767, uni));
     document.getElementById('an_uniInput').value = an_curUni;
     an_renderGrid();
   }

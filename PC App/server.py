@@ -728,7 +728,7 @@ def api_artnet_poll():
         existing_unis = {p["universe"] for p in patches}
         for node in nodes:
             uni = node["universe"]
-            if uni > 0 and uni not in existing_unis:
+            if uni >= 0 and uni not in existing_unis:
                 patches.append({"fixID": 0, "universe": uni, "startAddr": 1})
                 existing_unis.add(uni)
     _save_data()

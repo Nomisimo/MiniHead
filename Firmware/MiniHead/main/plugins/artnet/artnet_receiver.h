@@ -63,7 +63,7 @@ void artnet_loadPatches() {
     if (artnetPatchCount >= MAX_PATCHES) break;
     uint16_t uni  = o["universe"]  | 0;
     uint16_t addr = o["startAddr"] | 1;
-    if (uni < 1) { Serial.println("[ArtNet] Skipping stored patch with universe 0 — invalid"); continue; }
+    if (uni > 32767) { Serial.println("[ArtNet] Skipping stored patch with universe > 32767 — invalid"); continue; }
     artnetPatches[artnetPatchCount].universe  = uni;
     artnetPatches[artnetPatchCount].startAddr = addr;
     artnetPatchCount++;

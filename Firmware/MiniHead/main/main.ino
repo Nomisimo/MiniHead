@@ -29,7 +29,8 @@ static bool wifi_tryConnect(const char* ssid, const char* pass, unsigned long tm
   WiFi.begin(ssid, pass);
   unsigned long t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < tms) {
-    delay(500);
+    unsigned long tickEnd = millis() + 500;
+    while (millis() < tickEnd) { sled_wifiConnect(millis()); delay(20); }
     Serial.print(".");
   }
   Serial.println();
@@ -86,12 +87,7 @@ static void wifi_startAPMode() {
     Serial.println("[WiFi] mDNS: minihead.local");
   }
 
-  // Slow blue pulse × 3 so the user knows "I'm a hotspot, connect to me"
-  for (int i = 0; i < 3; i++) {
-    setLED(0, 0, 60, 0); delay(400);
-    setLED(0, 0,  0, 0); delay(400);
-  }
-  setLED(0, 0, 20, 0);  // dim blue stays on
+  sled_apMode();  // triple red flash → solid red (stays; no ArtNet in AP mode)
 }
 
 static void wifi_connectMulti() {
@@ -178,20 +174,17 @@ static void wifi_connectMulti() {
 #endif
 
     Serial.printf("[WiFi] All networks failed (%d) — retrying...\n", failCycles);
-    setLED(20, 0, 0, 0);   // dim red while waiting
 
 #ifdef PLUGIN_BLE_PROVISION
-    // No credentials: keep BLE SEEKER alive between WiFi scan attempts.
-    // ble_provision_pre_wifi() is a no-op when credentials exist,
-    // reboots on success, returns after PROVISION_TIMEOUT_MS if no SENDER found.
     ble_provision_pre_wifi();
-    // Only add the normal 10 s pause when creds exist (pre_wifi returned immediately).
-    if (WIFI_NETWORK_COUNT > 0) delay(10000);
+    if (WIFI_NETWORK_COUNT > 0) {
+      unsigned long waitEnd = millis() + 10000;
+      while (millis() < waitEnd) { sled_wifiRetry(millis()); delay(50); }
+    }
 #else
-    delay(10000);
+    { unsigned long waitEnd = millis() + 10000;
+      while (millis() < waitEnd) { sled_wifiRetry(millis()); delay(50); } }
 #endif
-
-    setLED(0, 0, 0, 0);
   }
 }
 
@@ -202,6 +195,7 @@ uint8_t deviceMAC[6];  // hardware STA MAC — read once before any WiFi mode ch
 void setup() {
   Serial.begin(115200);
   core_setup();             // mounts LittleFS — must run before wifi_connectMulti
+  sled_bootInit();          // orange solid — hardware alive
 
   // Read MAC before any WiFi mode changes — result is stable regardless of
   // whether the device ends up in STA or AP mode.
@@ -230,6 +224,8 @@ void setup() {
 
   for (int i = 0; i < _pluginCount; i++)
     _plugins[i].setup();
+
+  sled_bootDone();  // LED off — ArtNet/UDP takes over from here
 }
 
 void loop() {

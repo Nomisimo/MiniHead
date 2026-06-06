@@ -196,14 +196,16 @@ void discovery_setup() {
       char buf[128]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
       discovery_parseBeacon(buf, n);
     }
-    bool ledOn = ((millis() / 250) % 2 == 0);
-    setLED(ledOn?0:0, ledOn?30:0, ledOn?30:0, 0);
+    sled_peerListen(millis());
     delay(10);
   }
-  setLED(0,0,0,0);
+
+  { unsigned long electionEnd = millis() + 600;
+    while (millis() < electionEnd) { sled_peerElection(millis()); delay(10); } }
 
   discovery_elect();
   _electionDone = true;
+  sled_roleConfirmed();
 
   strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
   discovery_sendBeacon();

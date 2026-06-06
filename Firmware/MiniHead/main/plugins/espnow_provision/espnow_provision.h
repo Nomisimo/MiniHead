@@ -326,6 +326,7 @@ static void espnow_provision_pre_wifi() {
         // ── Wait up to 300 ms for SENDER response on this channel ─
         unsigned long waitStart = millis();
         while (millis() - waitStart < 300) {
+            sled_espnowHop(millis());
 
             if (_prov_rxReady && !_prov_provisioned) {
                 const uint8_t* data = _prov_rxRaw;
@@ -374,6 +375,7 @@ static void espnow_provision_pre_wifi() {
             esp_now_deinit();
             if (storage_writeJson("/wifi_provision.json", doc)) {
                 Serial.println("[PROVISION] Saved — rebooting");
+                sled_credReceived();
                 delay(100);
                 ESP.restart();
             } else {

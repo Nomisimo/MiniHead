@@ -223,6 +223,7 @@ static void ble_provision_pre_wifi() {
     char rxSSID[33] = {}, rxPass[65] = {};
 
     while (millis() - startMs < PROVISION_TIMEOUT_MS) {
+        sled_bleScan(millis());
         Serial.println("[PROVISION] SEEKER BLE scan...");
 
         BLEScan* scan = BLEDevice::getScan();
@@ -280,6 +281,7 @@ static void ble_provision_pre_wifi() {
             BLEDevice::deinit(false);
             if (storage_writeJson("/wifi_provision.json", doc)) {
                 Serial.println("[PROVISION] Saved — rebooting");
+                sled_credReceived();
                 delay(100);
                 ESP.restart();
             } else {

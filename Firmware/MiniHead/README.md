@@ -1,7 +1,7 @@
 # MiniHead Firmware — Modular v4.2
 
 > Current recommended firmware for all new installations.  
-> LittleFS JSON · ESPAsyncWebServer · Art-Net/DMX512 · Multi-Head UDP · ESP-NOW Provisioning
+> LittleFS JSON · ESPAsyncWebServer · Art-Net/DMX512 · Multi-Head UDP · BLE Provisioning
 
 ---
 
@@ -30,7 +30,7 @@
    - [8.5 Configuration](#85-configuration)
 9. [UDP Protocol](#9-udp-protocol)
 10. [Art-Net / DMX512](#10-art-net--dmx512)
-11. [ESP-NOW Provisioning](#11-esp-now-provisioning)
+11. [BLE Provisioning](#11-ble-provisioning)
 12. [PC Leader App](#12-pc-leader-app)
 13. [Art-Net Test Tool](#13-art-net-test-tool)
 14. [Stored Files — LittleFS](#14-stored-files--littlefs)
@@ -46,7 +46,7 @@
 | **Multi-head network** | Leader/follower election by lowest MAC; PC Leader App always wins |
 | **Cues + Sequencer** | Up to 32 saved scenes, per-fixture targeting, timed playback with loop |
 | **Art-Net / DMX512** | Built-in WiFiUDP parser, 7-channel fixture footprint, no external library |
-| **ESP-NOW Provisioning** | Zero-touch WiFi credential distribution to unconfigured heads |
+| **BLE Provisioning** | Zero-touch WiFi credential distribution via Bluetooth GATT |
 | **LittleFS JSON storage** | All settings in human-readable `.json` files; survives firmware updates |
 | **ESPAsyncWebServer** | Non-blocking HTTP; servo commands respond in < 5 ms |
 | **WiFi multi-network** | Tries last-connected SSID first, falls back down a list |
@@ -97,6 +97,10 @@ Download **Arduino IDE 2.x** from https://www.arduino.cc/en/software
 | **ESP32Servo** | Kevin Harrington | Servo PWM on ESP32 |
 | **ArduinoJson** | Benoit Blanchon | JSON for LittleFS files and API |
 
+> **Remove if installed (no longer needed):**
+> - **ArtnetWifi** — replaced with a custom WiFiUdp parser in `artnet_receiver.h` (no external library dependency)
+> - **Adafruit DMA NeoPixel** — DMA variant for SAMD21/SAMD51 only; never applicable to ESP32-C3
+
 #### Via ZIP Install — AsyncTCP + ESPAsyncWebServer
 
 The standard Library Manager version of ESPAsyncWebServer is **incompatible with Arduino Core 3.x**. Use the **mathieucarbou fork** exclusively.
@@ -120,9 +124,9 @@ These are part of the ESP32 board package and available automatically:
 - `ESPmDNS.h` — mDNS (`minihead.local`)
 - `DNSServer.h` — Captive portal DNS
 - `LittleFS.h` — Flash file system
-- `esp_now.h`, `esp_wifi.h` — ESP-NOW (provisioning plugin)
-- `freertos/FreeRTOS.h`, `task.h`, `queue.h` — RTOS (provisioning plugin)
-- `mbedtls/aes.h`, `mbedtls/md.h` — Crypto (provisioning plugin)
+- `BLEDevice.h`, `BLEServer.h`, `BLEClient.h`, `BLEScan.h`, … — Bluetooth GATT (BLE provisioning)
+- `freertos/FreeRTOS.h`, `task.h` — RTOS tasks (BLE provisioning sender)
+- `mbedtls/aes.h`, `mbedtls/md.h` — Crypto (BLE provisioning)
 
 ### 3.4 Board & Tools Settings
 
@@ -171,11 +175,11 @@ cp config.example.h config.h
 //#define PLUGIN_UDP_CONTROL        // Multi-head UDP discovery + leader election
 //#define PLUGIN_ARTNET             // Art-Net / DMX512 receiver
 //#define PLUGIN_PROFILER           // Loop timing + heap stats over Serial
-//#define PLUGIN_ESPNOW_PROVISION   // ESP-NOW WiFi credential distribution
+//#define PLUGIN_BLE_PROVISION      // BLE GATT WiFi credential distribution
 
 // ── WiFi network list ─────────────────────────────────────────────
 // The ESP tries networks in this order (last-connected SSID gets
-// priority on next boot). Leave empty if using ESP-NOW provisioning.
+// priority on next boot). Leave empty if using BLE provisioning.
 struct WifiCredential { const char* ssid; const char* password; };
 static const WifiCredential WIFI_NETWORKS[] = {
   { "PrimarySSID",  "password1" },
@@ -188,7 +192,7 @@ static const int WIFI_NETWORK_COUNT =
 // Used when no known WiFi is reachable. Must be ≥ 8 chars, or "" for open.
 #define AP_PASSWORD ""
 
-// ── ESP-NOW Provisioning ──────────────────────────────────────────
+// ── BLE Provisioning ─────────────────────────────────────────────
 // 32 hex chars = 16-byte AES-128 key. All devices in the fleet must
 // share the same key. Change before flashing — never leave as zeros.
 #define PROVISION_KEY "00000000000000000000000000000000"
@@ -247,10 +251,8 @@ main/
     │   ├── discovery_stubs.h        ← Empty stubs when PLUGIN_UDP_CONTROL is off
     │   ├── html_page.h              ← Embedded main UI HTML (PROGMEM, layout only)
     │   ├── theme.h                  ← Active CSS theme (PROGMEM, served at GET /theme)
-    │   ├── theme-light.h            ← Minimal light theme (rename to activate)
     │   ├── log_config.h             ← Runtime log level configuration
-    │   ├── log_panel_html.h         ← Log panel HTML
-    │   └── X-theme_*.h             ← Archived themes (see §7)
+    │   └── log_panel_html.h         ← Log panel HTML
     ├── udp_control/
     │   ├── udp_control.h            ← Plugin entry point
     │   └── discovery.h              ← Leader election, peer table, UDP CMD dispatcher
@@ -259,16 +261,14 @@ main/
     │   ├── artnet_globals.h         ← Structs, DMX_FOOTPRINT, ARTNET_PORT
     │   ├── artnet_receiver.h        ← WiFiUDP polling, DMX parsing, apply + relay
     │   ├── artnet_control.h         ← HTTP patch management routes
-    │   ├── artnet_panel_html.h      ← Art-Net panel HTML
-    │   └── artnet_stubs.h           ← Stubs when PLUGIN_ARTNET is off
+    │   └── artnet_panel_html.h      ← Art-Net panel HTML
+    ├── ble_provision/
+    │   ├── ble_provision.h          ← Full BLE GATT provisioning logic (SEEKER + SENDER)
+    │   └── ble_provision_config.h   ← BLE service/characteristic UUIDs + timeouts
     ├── profiler/
     │   └── profiler.h               ← Loop timing, heap, FreeRTOS task stats (optional)
-    └── espnow_provision/
-        ├── espnow_provision.h       ← Full provisioning logic (SEEKER + SENDER)
-        ├── espnow_provision_config.h← Timing + channel constants
-        ├── nonce_cache.h            ← 64-entry replay protection ring buffer
-        ├── crypto.h                 ← AES-128-CBC + HMAC-SHA256 declarations
-        └── crypto.cpp               ← mbedtls implementation
+    └── shared/
+        └── crypto.h                 ← AES-128-CBC + HMAC-SHA256 + key parser (shared)
 ```
 
 ### 6.1 Entry Point — `main.ino`
@@ -277,9 +277,9 @@ main/
 
 ```
 setup():
-  core_setup()                  → mount LittleFS, init LED + servos
-  [espnow_provision_pre_wifi()] → SEEKER blocks here if no credentials (optional)
-  wifi_connectMulti()           → connect to WiFi or start AP mode
+  core_setup()                → mount LittleFS, init LED + servos
+  [ble_provision_pre_wifi()]  → SEEKER blocks here if no credentials (optional, BLE provisioning only)
+  wifi_connectMulti()         → connect to WiFi or start AP mode
   WiFi.setSleep(false)          → disable modem sleep for low-latency UDP
   MDNS.begin("minihead")        → accessible as minihead.local
   for each plugin: setup()      → initialize all registered plugins
@@ -340,8 +340,8 @@ The `PluginRegistrar` constructor appends `{setup, loop}` to the global `_plugin
 | **startup_animation** | `PLUGIN_STARTUP_ANIMATION` | Servo sweep + RGBW color test on boot |
 | **udp_control** | `PLUGIN_UDP_CONTROL` | UDP discovery beacons, leader election, peer table, CMD relay |
 | **artnet** | `PLUGIN_ARTNET` | Art-Net DMX512 receiver + HTTP patch management |
+| **ble_provision** | `PLUGIN_BLE_PROVISION` | Zero-touch WiFi credential distribution via Bluetooth GATT |
 | **profiler** | `PLUGIN_PROFILER` | Loop stats, heap, FreeRTOS task table over Serial |
-| **espnow_provision** | `PLUGIN_ESPNOW_PROVISION` | Zero-touch WiFi credential distribution via ESP-NOW |
 
 ---
 
@@ -354,19 +354,11 @@ The web UI separates **layout** (never changes) from **theme** (all colors, font
 | File | Design |
 |---|---|
 | `theme.h` | **Active theme.** Dark cyberpunk — cyan + purple accents, Share Tech Mono |
-| `theme-light.h` | Minimal clean light design, system sans-serif |
-| `X-theme_original.h` | Pre-v4.2 dark design (very similar to current default) |
-| `X-theme_custom.h` | Alternative dark variant |
-| `X-theme_win98.h` | Windows 98 retro throwback |
-| `X-theme_session.h` | Experimental session design |
-
-Files prefixed with `X-` are archived — they compile but are not active.
 
 ### How to switch themes
 
-1. Rename `theme.h` to `X-theme_current.h` (backup)
-2. Rename your desired `X-theme_*.h` to `theme.h`
-3. Upload firmware
+1. Replace the contents of `theme.h` with your custom CSS (or create a new file and rename it to `theme.h`)
+2. Upload firmware
 
 No other changes needed — `wifi_control.h` always serves `theme.h` at `GET /theme`.
 
@@ -572,26 +564,25 @@ Enable with `#define PLUGIN_ARTNET` in `config.h`.
 
 ---
 
-## 11. ESP-NOW Provisioning
+## 11. BLE Provisioning
 
-Enable with `#define PLUGIN_ESPNOW_PROVISION` in `config.h`.
+Enable with `#define PLUGIN_BLE_PROVISION` in `config.h`.
 
-This allows devices with **no WiFi credentials** (empty `WIFI_NETWORKS[]`) to receive the SSID and password wirelessly from a device that is already connected — no USB cable or AP needed for new heads.
+This allows devices with **no WiFi credentials** (empty `WIFI_NETWORKS[]`) to receive the SSID and password wirelessly from a device that is already connected — no USB cable or AP needed for new heads. Uses Bluetooth GATT (frequency-hopping 2.4 GHz) instead of ESP-NOW, so there is **no WiFi channel constraint**.
 
 ### Roles
 
 | Role | Condition | Behaviour |
 |---|---|---|
-| **SEEKER** | `WIFI_NETWORK_COUNT == 0` and no `/wifi_provision.json` | Broadcasts encrypted beacons every 2 s; waits up to 30 s for a SENDER; stores credentials and reboots |
-| **SENDER** | Connected to WiFi via STA | Listens for SEEKER beacons; broadcasts encrypted SSID+PW; stops after 30 s of silence |
+| **SEEKER** | `WIFI_NETWORK_COUNT == 0` and no `/wifi_provision.json` | BLE scan loop; on finding a SENDER: connects, reads characteristic, verifies HMAC, decrypts, saves credentials, reboots |
+| **SENDER** | Connected to WiFi via STA | Starts a GATT server in a background task; advertises encrypted SSID+PW for `PROVISION_SENDER_MS`; then deinits BLE automatically |
 
 ### Security
 
 - **PROVISION_KEY** (set in `config.h`, 32 hex chars) is used as AES-128-CBC key and HMAC-SHA256 key
-- Only devices with the matching binary accept each other's packets
-- SSID+PW are AES-128-CBC encrypted with a fresh random IV each packet
+- Only devices with the matching key can decrypt the payload
+- SSID+PW are AES-128-CBC encrypted with a fresh random IV per payload
 - HMAC-SHA256 covers the full payload — integrity and authentication
-- 4-byte nonce + 64-entry ring buffer prevents replay attacks
 - Key is never transmitted — only used locally for crypto operations
 
 ### Setup
@@ -600,29 +591,25 @@ This allows devices with **no WiFi credentials** (empty `WIFI_NETWORKS[]`) to re
    ```cpp
    #define PROVISION_KEY "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
    ```
-2. Uncomment `#define PLUGIN_ESPNOW_PROVISION`
-3. Set `PROVISION_CHANNEL` in `plugins/espnow_provision/espnow_provision_config.h` to match your router's WiFi channel (default: 1)
-4. Flash **all devices** with the same binary
-5. One device needs `WIFI_NETWORKS[]` filled in (it becomes the SENDER)
-6. Other devices start with empty `WIFI_NETWORKS[]` → they become SEEKERs
+2. Uncomment `#define PLUGIN_BLE_PROVISION`
+3. Flash **all devices** with the same binary
+4. One device needs `WIFI_NETWORKS[]` filled in (it becomes the SENDER)
+5. Other devices start with empty `WIFI_NETWORKS[]` → they become SEEKERs
 
 ### Boot flow with provisioning enabled
 
 ```
 Device with credentials:            Device without credentials:
-  boot → pre_wifi() → no-op           boot → pre_wifi() → SEEKER mode
-  wifi_connectMulti() → connected       ↓ beaconing every 2 s
-  plugin_setup() → SENDER starts        ↓ receives PAYLOAD
-  listens for SEEKER beacons          credentials verified (HMAC + AES decrypt)
-  PAYLOAD encrypted + broadcast →     saved to /wifi_provision.json
+  boot → ble_provision_pre_wifi()     boot → ble_provision_pre_wifi()
+  → already has creds → no-op         → SEEKER: BLE scan loop
+  wifi_connectMulti() → connected       ↓ finds SENDER GATT service
+  plugin setup() → SENDER task starts   ↓ reads + verifies payload
+  advertises encrypted creds → →      credentials verified (HMAC + AES decrypt)
+  stops after PROVISION_SENDER_MS     saved to /wifi_provision.json
                                         ESP.restart()
                                         boot → wifi_connectMulti() → connected ✓
                                         plugin_setup() → also SENDER now
 ```
-
-### Channel constraint
-
-The ESP radio in STA mode is locked to the AP's channel. Set `PROVISION_CHANNEL` to the same channel as your WiFi router. Common values: 1, 6, 11. Check your router admin panel.
 
 ---
 
@@ -692,7 +679,7 @@ All files survive firmware uploads. To wipe, use **Tools → ESP32 Sketch Data U
 | File | Format | Contents |
 |---|---|---|
 | `/wifi_last.json` | `{"ssid":"YourSSID"}` | Last successfully connected SSID |
-| `/wifi_provision.json` | `{"ssid":"…","pass":"…"}` | Credentials received via ESP-NOW (deleted after successful connect) |
+| `/wifi_provision.json` | `{"ssid":"…","pass":"…"}` | Credentials received via BLE provisioning (deleted after successful connect) |
 | `/discovery.json` | `{"fixID":1,"name":"Head 1"}` | Fixture ID and display name |
 | `/cues.json` | JSON array | Up to 32 saved cues |
 | `/artnet.json` | JSON array | Art-Net patch assignments |
@@ -727,11 +714,11 @@ Set baud to **115200**. Press the reset button after opening.
 
 **SEEKER provisioning (first boot, no credentials):**
 ```
-[PROVISION] No credentials — SEEKER mode
-[PROVISION] ESP-NOW OK on channel 1 — beaconing every 2000 ms
-[PROVISION] SEEKER beacon sent
-[PROVISION] SEEKER beacon sent
-[PROVISION] Credentials received — SSID: YourSSID
+[PROVISION] No credentials — SEEKER mode (BLE scan)
+[PROVISION] SEEKER BLE scan...
+[PROVISION] SENDER found: AA:BB:CC:DD:EE:FF
+[PROVISION] Payload received 124 bytes — verifying
+[PROVISION] Credentials OK — SSID: YourSSID
 [Storage] /wifi_provision.json — written
 [PROVISION] Saved — rebooting
 --- (reboot) ---

@@ -4,7 +4,7 @@
 // LED indicators run ONLY during setup(). Once the startup animation
 // completes and loop() is running, the LED belongs to ArtNet/UDP.
 //
-// Color logic:   orange=system  violet=provisioning  blue=wifi
+// Color logic:   orange=boot  violet=BLE provisioning  blue=wifi
 //                cyan=discovery  red=error/fallback
 // Animation:     slow pulse (750ms) = waiting/listening
 //                fast blink (150ms) = actively working
@@ -46,12 +46,6 @@ static inline void sled_bootDone()     { setLED(0, 0, 0, 0); }
 // Provisioning: BLE scanning for sender — violet slow pulse
 static inline void sled_bleScan(unsigned long ms) {
   bool on = _sled_slow(ms);
-  setLED(on?40:0, 0, on?80:0, 0);
-}
-
-// Provisioning: ESP-NOW channel hopping — violet fast blink
-static inline void sled_espnowHop(unsigned long ms) {
-  bool on = _sled_fast(ms);
   setLED(on?40:0, 0, on?80:0, 0);
 }
 

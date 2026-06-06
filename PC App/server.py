@@ -64,6 +64,8 @@ log_flags  = {                  # keys match ESP firmware log_config.h
 
 rainbow_lock   = threading.Lock()
 rainbow_active = False
+demo_lock      = threading.Lock()
+demo_active    = False
 
 # ── Persistence ────────────────────────────────────────────────────────────
 def _load_data():
@@ -146,11 +148,7 @@ def _own_ip():
         return "127.0.0.1"
 
 def _broadcast_addr(ip):
-    try:
-        iface = ipaddress.IPv4Interface(ip + "/24")
-        return str(iface.network.broadcast_address)
-    except Exception:
-        return "255.255.255.255"
+    return "255.255.255.255"
 
 def _build_beacon():
     ip = _own_ip()
@@ -212,17 +210,6 @@ def _unicast_all(cmd):
     for ip, mac in targets:
         _send_udp_cmd(ip, cmd, mac)
 
-def _broadcast_cmd(cmd):
-    try:
-        ip = _own_ip()
-        bcast = _broadcast_addr(ip)
-        msg = f"CMD|*|{cmd}".encode()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(msg, (bcast, CMD_PORT))
-        sock.close()
-    except Exception as e:
-        print(f"[udp] broadcast error: {e}")
 
 def _push_patch_to_esp(fid, uni, addr):
     """Push a patch record to every online ESP whose fixID matches fid.
@@ -646,13 +633,30 @@ def api_send():
 
 @app.route("/api/rainbow", methods=["POST"])
 def api_rainbow():
-    global rainbow_active
+    global rainbow_active, demo_active
     data = request.get_json(force=True)
     on   = bool(data.get("on", False))
     with rainbow_lock:
         rainbow_active = on
-    cmd = "RAINBOW:1" if on else "RAINBOW:0"
-    _unicast_all(cmd)
+    if on:
+        with demo_lock:
+            demo_active = False
+        _unicast_all("DEMO:0")
+    _unicast_all("RAINBOW:1" if on else "RAINBOW:0")
+    return jsonify({"status": "ok", "on": on})
+
+@app.route("/api/demo", methods=["POST"])
+def api_demo():
+    global demo_active, rainbow_active
+    data = request.get_json(force=True)
+    on   = bool(data.get("on", False))
+    with demo_lock:
+        demo_active = on
+    if on:
+        with rainbow_lock:
+            rainbow_active = False
+        _unicast_all("RAINBOW:0")
+    _unicast_all("DEMO:1" if on else "DEMO:0")
     return jsonify({"status": "ok", "on": on})
 
 # ── Cues ──────────────────────────────────────────────────────────────────────
@@ -889,10 +893,16 @@ def api_esp_logconfig():
             print(f"[logconfig push] {mac} {ip}: {e}")
     return jsonify({"status": "ok"})
 
+def _peer_expiry_loop():
+    """Expire stale peers every 30 s — ensures cleanup even when UI is not polling /api/heads."""
+    while True:
+        time.sleep(30)
+        _expire_peers()
+
 # ── Startup ────────────────────────────────────────────────────────────────────
 def _start_threads():
     for target in [beacon_sender, beacon_receiver, http_keepalive,
-                   sequencer_runner, artnet_sniffer]:
+                   sequencer_runner, artnet_sniffer, _peer_expiry_loop]:
         t = threading.Thread(target=target, daemon=True, name=target.__name__)
         t.start()
         print(f"[init] thread started: {target.__name__}")

@@ -1,5 +1,6 @@
 #pragma once
-#define FIRMWARE_VERSION "Modular v4.2 — LittleFS + AsyncUDP"
+#define FIRMWARE_VERSION       "Modular v4.2 — LittleFS + AsyncUDP"
+#define FIRMWARE_VERSION_SHORT "4.2"
 #include "plugin_registry.h"
 #include "plugins/storage/storage.h"
 
@@ -26,7 +27,6 @@ int curPan = 90, curTilt = 90;
 
 bool rainbowActive = false;
 uint8_t rainbowHue = 0;
-unsigned long lastRainbowStep = 0;
 static uint8_t _preRainbowR = 0, _preRainbowG = 0, _preRainbowB = 0, _preRainbowW = 0;
 static float _rainbowHueF = 0.0f;  // float accumulator so animSpeed < 1.0 works
 
@@ -201,6 +201,7 @@ void core_loop() {
   }
 
   // Rainbow effect (color only, no motion)
+  static unsigned long lastRainbowStep = 0;
   if (rainbowActive) {
     unsigned long now = millis();
     if (now - lastRainbowStep >= 20) {

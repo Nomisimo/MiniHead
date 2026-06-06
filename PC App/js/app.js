@@ -3,19 +3,12 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 var rainbowActive = false;
+var demoActive    = false;
 var seqSelectedIds = [];
 var sendTimer = null;
 var _editCueId = null;
 var _cDragId = null;
 var _artnetWasActive = false;
-// Keys match ESP firmware log_config.h — must be identical for push to work
-var LOG_KEYS = [
-  { key: 'artnetFrames',     label: 'ArtNet Frames'      },
-  { key: 'artnetEvents',     label: 'ArtNet Events'      },
-  { key: 'discoveryBeacons', label: 'Discovery Beacons'  },
-  { key: 'discoveryEvents',  label: 'Discovery Events'   },
-  { key: 'udpVerbose',       label: 'UDP Verbose'        },
-];
 
 // ── Init ───────────────────────────────────────────────────────────────────
 try {
@@ -26,8 +19,6 @@ try {
     if(d.version) document.getElementById('appVersion').textContent = '['+d.version+']';
   }).catch(function(){});
 
-  buildLogGrid();
-  loadLogFlags();
   updatePreview();
   loadCues();
 
@@ -120,14 +111,23 @@ function sendRaw() {
   toast('Sent: '+cmd);
 }
 
-// ── Rainbow ────────────────────────────────────────────────────────────────
+// ── Rainbow / Demo ─────────────────────────────────────────────────────────
 function toggleRainbow() {
   rainbowActive = !rainbowActive;
-  var btn = document.getElementById('rainbowBtn');
-  btn.classList.toggle('active', rainbowActive);
+  if (rainbowActive) { demoActive = false; document.getElementById('demoBtn').classList.remove('active'); }
+  document.getElementById('rainbowBtn').classList.toggle('active', rainbowActive);
   fetch('/api/rainbow', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({on: rainbowActive})});
   toast(rainbowActive ? 'Rainbow ON — all heads' : 'Rainbow OFF');
+}
+
+function toggleDemo() {
+  demoActive = !demoActive;
+  if (demoActive) { rainbowActive = false; document.getElementById('rainbowBtn').classList.remove('active'); }
+  document.getElementById('demoBtn').classList.toggle('active', demoActive);
+  fetch('/api/demo', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({on: demoActive})});
+  toast(demoActive ? 'Demo ON — all heads' : 'Demo OFF');
 }
 
 // ── Cues ───────────────────────────────────────────────────────────────────
@@ -327,36 +327,6 @@ function an_pollStatus() {
   }).catch(function(){});
 }
 
-// ── Log flags ──────────────────────────────────────────────────────────────
-function buildLogGrid() {
-  var grid = document.getElementById('logGrid');
-  if(!grid) return;
-  var html = '';
-  LOG_KEYS.forEach(function(entry){
-    html += '<label class="log-check"><input type="checkbox" id="log_'+entry.key+'" checked><span>'+entry.label+'</span></label>';
-  });
-  grid.innerHTML = html;
-}
-
-function loadLogFlags() {
-  fetch('/api/logconfig').then(function(r){return r.json();}).then(function(d){
-    LOG_KEYS.forEach(function(entry){
-      var el = document.getElementById('log_'+entry.key);
-      if(el && entry.key in d) el.checked = !!d[entry.key];
-    });
-  }).catch(function(){});
-}
-
-function logSave() {
-  var payload = {};
-  LOG_KEYS.forEach(function(entry){
-    var el = document.getElementById('log_'+entry.key);
-    if(el) payload[entry.key] = el.checked;
-  });
-  fetch('/api/esp/logconfig', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  }).then(function(){toast('Log config saved & pushed to ESPs');}).catch(function(){});
-}
 
 updatePreview();
 loadCues();

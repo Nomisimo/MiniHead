@@ -10,7 +10,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nano Moving Light</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -28,7 +29,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   .faders-row{display:grid;grid-template-columns:repeat(4,1fr);align-items:end;}
   .fader-group{display:flex;flex-direction:column;align-items:center;}
   .vslider-wrap{width:36px;height:140px;display:flex;align-items:center;justify-content:center;}
-  input[type=range].vertical{writing-mode:vertical-lr;direction:rtl;width:36px;height:140px;-webkit-appearance:slider-vertical;appearance:slider-vertical;cursor:pointer;}
+  input[type=range].vertical{writing-mode:vertical-lr;direction:rtl;width:36px;height:140px;cursor:pointer;}
   input[type=range]{cursor:pointer;}
   .preview-row{display:flex;justify-content:center;}
   .motion-row{display:grid;grid-template-columns:48px 1fr 60px;align-items:center;}
@@ -115,7 +116,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
   </div>
 
-  <!-- Modules: Network Heads + Art-Net Patch + Log Config -->
+  <!-- Modules: Network Heads + Art-Net Patch + Debugger -->
   <div class="area-future" style="background:var(--bg)">
     <div class="panel" id="module-container" style="border-bottom:1px solid var(--border)">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
@@ -138,8 +139,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       </div>
       <div id="ap-pw-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
     </div>
-    <div class="panel" id="log-module-container">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Log Config...</div>
+    <div class="panel" id="debugger-module-container">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Debugger...</div>
     </div>
   </div>
 
@@ -345,7 +346,7 @@ function loadModule(url, id) {
 }
 loadModule('/plugins/wifi/discovery_panel.html','module-container');
 loadModule('/plugins/artnet/panel.html','artnet-module-container');
-loadModule('/plugins/log/panel.html','log-module-container');
+loadModule('/plugins/debugger/panel.html','debugger-module-container');
 var _artnetWasActive=false;
 function an_pollStatus(){
   fetch('/api/artnet/status').then(function(r){return r.json();}).then(function(d){

@@ -68,3 +68,28 @@ static inline size_t crypto_aes128_cbc_decrypt(const uint8_t* key16, const uint8
         if (plain[i] != pad_byte) return 0;
     return cipher_len - pad_byte;
 }
+
+// Parses a 32-char hex PROVISION_KEY into a 16-byte AES key and 32-byte HMAC key
+// (HMAC = AES key repeated twice). Caches the result via the parsed flag.
+static inline bool crypto_parse_provision_key(const char* hex,
+                                               uint8_t keyAes[16],
+                                               uint8_t keyHmac[32],
+                                               bool&   parsed) {
+    if (parsed) return true;
+    if (strlen(hex) != 32) return false;
+    for (int i = 0; i < 16; i++) {
+        auto nibble = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        int hi = nibble(hex[i * 2]), lo = nibble(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) return false;
+        keyAes[i] = (uint8_t)((hi << 4) | lo);
+    }
+    memcpy(keyHmac,      keyAes, 16);
+    memcpy(keyHmac + 16, keyAes, 16);
+    parsed = true;
+    return true;
+}

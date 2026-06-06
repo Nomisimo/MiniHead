@@ -17,7 +17,6 @@
 #include "theme.h"
 #include "core_globals.h"
 #include "log_config.h"
-#include "log_panel_html.h"
 #include "discovery_globals.h"
 
 // ── UDP forward declarations ──────────────────────────────────────
@@ -599,18 +598,6 @@ void handleSeqStart(AsyncWebServerRequest* req) {
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 
-// ── Log config handlers ───────────────────────────────────────────
-
-void handleLogPanel(AsyncWebServerRequest* req) {
-  sendHtmlProgmem(req, LOG_PANEL_HTML);
-}
-void handleGetLogConfig(AsyncWebServerRequest* req) {
-  sendJson(req, 200, logcfg_toJson());
-}
-void handleSetLogConfig(AsyncWebServerRequest* req) {
-  logcfg_fromJson(_getBody(req));
-  sendJson(req, 200, "{\"status\":\"ok\"}");
-}
 
 // ── Config routes (always active — no requireLeader() guard) ─────
 // Called from setupRoutes() for LEADER/FOLLOWER and directly for
@@ -684,16 +671,10 @@ void setupRoutes() {
 
   // ── Static HTML pages ─────────────────────────────────────────
   server.on("/",                       HTTP_GET, [](AsyncWebServerRequest* r){ handleRoot(r); });
-  server.on("/plugins/log/panel.html", HTTP_GET, [](AsyncWebServerRequest* r){ handleLogPanel(r); });
   // Discovery panel  → registered by udp_control plugin
   // Art-Net panel    → registered by artnet plugin
   // Art-Net API      → registered by artnet plugin
-
-  // ── Log config API ────────────────────────────────────────────
-  server.on("/api/logconfig", HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetLogConfig(r); });
-  server.on("/api/logconfig", HTTP_POST,
-    [](AsyncWebServerRequest* r){ handleSetLogConfig(r); },
-    nullptr, _bodyAccumulator);
+  // Log config panel + API → registered by debugger plugin
 
   // ── General API ───────────────────────────────────────────────
   server.on("/api/status",    HTTP_GET,  [](AsyncWebServerRequest* r){ handleStatus(r); });

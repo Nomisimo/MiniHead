@@ -18,7 +18,7 @@
 //#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
 #define PLUGIN_UDP_CONTROL
 #define PLUGIN_ARTNET
-//#define PLUGIN_PROFILER
+//#define PLUGIN_DEBUGGER
 
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
@@ -42,6 +42,24 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // Must be at least 8 characters. Use "" for an open (no-password) network.
 #define AP_PASSWORD "minihead"
 
+// ── BLE Provisioning ──────────────────────────────────────────────
+// Devices with an empty WIFI_NETWORKS[] start as SEEKER: they scan via
+// Bluetooth and receive encrypted credentials from a SENDER (a device
+// already on WiFi). After receiving, they store to /wifi_provision.json
+// and reboot.
+//
+// PROVISION_KEY: 32 hex chars = 16-byte AES-128 key.
+// All devices in the same fleet must share the same key.
+// Change this before flashing — do not leave it at the placeholder below.
+#define PROVISION_KEY "00000000000000000000000000000000"
+
+// Uncomment to enable BLE credential provisioning:
+//#define PLUGIN_BLE_PROVISION
+
+#ifdef PLUGIN_BLE_PROVISION
+#include "plugins/ble_provision/ble_provision.h"
+#endif
+
 // ── Plugins ───────────────────────────────────────────────────────
 // NOTE: startup_animation must come first (runs before WiFi is up).
 //       wifi must come after startup_animation.
@@ -59,8 +77,8 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #include "plugins/artnet/artnet.h"                // Art-Net / DMX512 receiver — port 6454
 #endif
 
-#ifdef PLUGIN_PROFILER
-#include "plugins/profiler/profiler.h"            // loop timing profiler (debug only)
+#ifdef PLUGIN_DEBUGGER
+#include "plugins/debugger/debugger.h"            // log config UI + loop timing profiler
 #endif
 
 // ── Stubs ─────────────────────────────────────────────────────────
@@ -68,8 +86,4 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 
 #ifndef PLUGIN_UDP_CONTROL
 #include "plugins/wifi/discovery_stubs.h"
-#endif
-
-#ifndef PLUGIN_ARTNET
-#include "plugins/artnet/artnet_stubs.h"
 #endif

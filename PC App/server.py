@@ -38,6 +38,7 @@ _next_cue_id  = 1
 patches_lock  = threading.Lock()
 patches       = []          # [{fixID, universe, startAddr}]
 
+
 seq_lock      = threading.Lock()
 seq           = {"running": False, "cue_ids": [], "interval_ms": 2000,
                  "loop": True, "index": 0, "last_step": 0.0}
@@ -212,48 +213,30 @@ def _unicast_all(cmd):
 
 
 def _artpoll_send():
-    """Broadcast ArtPoll on port 6454, collect ArtPollReply packets for 2 s.
-    Returns a list of {"ip", "name", "universe"} dicts — one per reply."""
-    ARTNET_PORT = 6454
-    # Build 14-byte ArtPoll packet
-    pkt = bytearray(14)
-    pkt[0:8] = b"Art-Net\x00"
-    pkt[8]   = 0x00; pkt[9] = 0x20    # OpCode 0x2000 LE
-    pkt[10]  = 0;    pkt[11] = 14     # ProtVer = 14
-    pkt[12]  = 0x06                   # TalkToMe: send reply on change, unicast
-    pkt[13]  = 0x10                   # Priority: DpLow
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.settimeout(2.0)
-        sock.bind(("", ARTNET_PORT))
-        sock.sendto(bytes(pkt), ("255.255.255.255", ARTNET_PORT))
-        nodes = []
-        deadline = time.time() + 2.0
-        while time.time() < deadline:
-            try:
-                data, addr = sock.recvfrom(512)
-                if len(data) < 214: continue
-                if data[0:8] != b"Art-Net\x00": continue
-                opcode = data[8] | (data[9] << 8)
-                if opcode != 0x2100: continue            # not ArtPollReply
-                ip_str = f"{data[10]}.{data[11]}.{data[12]}.{data[13]}"
-                name   = data[26:44].rstrip(b"\x00").decode("ascii", errors="replace")
-                net    = data[18] & 0x7F
-                sub    = data[19] & 0x0F
-                sw     = data[190] & 0x0F
-                universe = (net << 8) | (sub << 4) | sw
-                nodes.append({"ip": ip_str, "name": name or "MiniHead", "universe": universe})
-            except socket.timeout:
-                break
-            except Exception:
-                pass
-        sock.close()
-        return nodes
-    except Exception as e:
-        print(f"[artpoll] error: {e}")
-        return []
+    """HTTP-poll every known peer for its Art-Net patch.
+    Reliable even behind Fritz!Box (no inbound UDP required).
+    Returns a list of {"ip", "name", "fixID", "universe", "startAddr"} dicts."""
+    with peers_lock:
+        targets = [(p["ip"], p.get("fixID", 0), p.get("name", "?"))
+                   for m, p in peers.items() if m != OWN_MAC]
+    nodes = []
+    for ip, fix_id, name in targets:
+        try:
+            resp = urllib.request.urlopen(f"http://{ip}/api/artnet/patch", timeout=3)
+            data = json.loads(resp.read())
+            resp.close()
+            for p in data:
+                nodes.append({
+                    "ip":       ip,
+                    "name":     name,
+                    "fixID":    p.get("fixID", fix_id),
+                    "universe": p.get("universe", 0),
+                    "startAddr":p.get("startAddr", 1),
+                })
+            print(f"[artpoll] HTTP {ip}: {len(data)} patch(es)")
+        except Exception as e:
+            print(f"[artpoll] HTTP {ip}: {e}")
+    return nodes
 
 def _push_patch_to_esp(fid, uni, addr):
     """Push a patch record to every online ESP whose fixID matches fid.
@@ -449,8 +432,6 @@ def artnet_sniffer():
     while True:
         try:
             data, addr = sock.recvfrom(600)
-            # Minimal Art-Net DMX parse: header "Art-Net\0" (8 bytes), OpCode 0x5000
-            # Spec: minimum valid ArtDmx = 18-byte header + 2 DMX bytes = 20 bytes minimum
             if len(data) < 20 or data[:8] != b"Art-Net\0":
                 continue
             opcode = struct.unpack_from("<H", data, 8)[0]
@@ -725,12 +706,19 @@ def api_anim_speed():
 def api_artnet_poll():
     nodes = _artpoll_send()
     with patches_lock:
-        existing_unis = {p["universe"] for p in patches}
         for node in nodes:
-            uni = node["universe"]
-            if uni >= 0 and uni not in existing_unis:
-                patches.append({"fixID": 0, "universe": uni, "startAddr": 1})
-                existing_unis.add(uni)
+            fid  = node["fixID"]
+            uni  = node["universe"]
+            addr = node["startAddr"]
+            if fid > 0:
+                existing = next((p for p in patches if p["fixID"] == fid), None)
+                if existing:
+                    existing["universe"]  = uni
+                    existing["startAddr"] = addr
+                else:
+                    patches.append({"fixID": fid, "universe": uni, "startAddr": addr})
+            elif not any(p["universe"] == uni for p in patches):
+                patches.append({"fixID": 0, "universe": uni, "startAddr": addr})
     _save_data()
     return jsonify({"status": "ok", "nodes": nodes})
 

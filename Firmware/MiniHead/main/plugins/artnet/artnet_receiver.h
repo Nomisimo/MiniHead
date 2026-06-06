@@ -183,20 +183,26 @@ static void artnet_sendPollReply(IPAddress dest) {
     reply[20] = 0xFF; reply[21] = 0xFF;                // Oem = 0xFFFF (general)
     // [22] UbeaVersion = 0, [23] Status1 = 0
     // [24-25] EstaMan = 0x0000
-    strncpy((char*)(reply + 26), ownName[0] ? ownName : "MiniHead", 17); // ShortName
-    strncpy((char*)(reply + 44), "MiniHead RGBW Moving Light", 63);       // LongName
+    char _shortName[18] = {};
+    if (ownName[0]) snprintf(_shortName, 18, "%s", ownName);
+    else            snprintf(_shortName, 18, "MiniHead-%d", ownFixID);
+    strncpy((char*)(reply + 26), _shortName, 17);                         // ShortName
+    char _longName[64] = {};
+    snprintf(_longName, 64, "MiniHead Fix#%d U%u", ownFixID, uni);
+    strncpy((char*)(reply + 44), _longName, 63);                          // LongName
     snprintf((char*)(reply + 108), 64, "#0001 [0000] OK");                // NodeReport
     reply[173] = 1;                                    // NumPorts = 1
     reply[174] = 0x80;                                 // PortTypes[0] = DMX output
     reply[182] = 0x80;                                 // GoodOutputA[0] = transmitting
     reply[186] = sw;                                   // SwIn[0]
     reply[190] = sw;                                   // SwOut[0]
-    reply[196] = 100;                                  // AcnPriority
-    // [204] Style = 0x00 (StNode)
-    memcpy(reply + 207, mac, 6);                       // MAC
-    reply[210] = localIP[0]; reply[211] = localIP[1]; // BindIp
-    reply[212] = localIP[2]; reply[213] = localIP[3];
-    reply[214] = 0x08;                                 // Status2 = DHCP capable
+    reply[194] = 100;                                  // AcnPriority
+    reply[200] = 0x00;                                 // Style = StNode
+    memcpy(reply + 201, mac, 6);                       // MAC[6]
+    reply[207] = localIP[0]; reply[208] = localIP[1]; // BindIp[4]
+    reply[209] = localIP[2]; reply[210] = localIP[3];
+    reply[211] = 1;                                    // BindIndex = 1
+    reply[212] = 0x08;                                 // Status2 = DHCP capable
 
     _artnetUdp.beginPacket(dest, ARTNET_PORT);
     _artnetUdp.write(reply, 239);

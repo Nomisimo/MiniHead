@@ -26,9 +26,10 @@ void udp_broadcastCommand(const char* cmd);
 void udp_sendIdentifyOn(const char* ip, const char* mac);
 void udp_sendIdentifyOff(const char* ip, const char* mac);
 
-// ── ArtNet forward declaration ────────────────────────────────────
-// Implemented by plugins/artnet/artnet_control.h (included after this file).
+// ── ArtNet forward declarations ───────────────────────────────────
+// Implemented by plugins/artnet/ headers (included after this file).
 #ifdef PLUGIN_ARTNET
+#include "../artnet/artnet_globals.h"   // extern artnetSenderIP + ArtnetPatch
 void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 #endif
 

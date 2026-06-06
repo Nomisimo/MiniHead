@@ -27,7 +27,7 @@ void artnet_setup() {
 
   // Panel HTML
   server.on("/plugins/artnet/panel.html", HTTP_GET,
-    [](AsyncWebServerRequest* r) { sendHtmlProgmem(r, ARTNET_PANEL_HTML, true); });
+    [](AsyncWebServerRequest* r) { sendHtmlProgmem(r, ARTNET_PANEL_HTML); });
 
   // Art-Net API routes
   server.on("/api/artnet/status",     HTTP_GET,    [](AsyncWebServerRequest* r){ handleArtnetStatus(r); });

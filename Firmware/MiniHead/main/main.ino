@@ -50,6 +50,13 @@ static void wifi_saveLastSSID(const char* ssid) {
   storage_writeJson("/wifi_last.json", doc);
 }
 
+static void wifi_saveCreds(const char* ssid, const char* pass) {
+  JsonDocument doc;
+  doc["ssid"] = ssid;
+  doc["pass"] = pass;
+  storage_writeJson("/wifi_saved.json", doc);
+}
+
 // ── AP fallback ───────────────────────────────────────────────────
 // Called when wifi_connectMulti() fails twice. Starts an open hotspot
 // so the user can still reach the web UI without a known network.
@@ -96,20 +103,27 @@ static void wifi_connectMulti() {
   delay(200);
 
 #ifdef PLUGIN_BLE_PROVISION
-  // Try credentials received via BLE provisioning on a previous boot.
-  // File is removed after a successful connect so normal credential flow takes over.
+  // First-boot provisioning: save credentials permanently, then discard the transport file.
   { JsonDocument provDoc;
     if (storage_readJson("/wifi_provision.json", provDoc)) {
       const char* s = provDoc["ssid"] | "";
       const char* p = provDoc["pass"] | "";
-      if (strlen(s) > 0 && strlen(p) > 0 && wifi_tryConnect(s, p)) {
-        wifi_saveLastSSID(s);
+      if (strlen(s) > 0 && strlen(p) > 0) {
+        wifi_saveCreds(s, p);          // persist to /wifi_saved.json for all future boots
         LittleFS.remove("/wifi_provision.json");
-        return;
       }
     }
   }
 #endif
+
+  // Load saved (BLE-provisioned) credential — treated identically to WIFI_NETWORKS[] entries.
+  String savedSSID = "", savedPass = "";
+  { JsonDocument savedDoc;
+    if (storage_readJson("/wifi_saved.json", savedDoc)) {
+      savedSSID = String(savedDoc["ssid"] | "");
+      savedPass = String(savedDoc["pass"] | "");
+    }
+  }
 
   int failCycles = 0;
 
@@ -135,6 +149,12 @@ static void wifi_connectMulti() {
           }
         }
       }
+      if (savedSSID == lastSSID && wifi_ssidVisible(savedSSID.c_str(), found)) {
+        if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
+          wifi_saveLastSSID(savedSSID.c_str());
+          return;
+        }
+      }
     }
 
     // 2. Try remaining visible networks in list order
@@ -146,17 +166,30 @@ static void wifi_connectMulti() {
         return;
       }
     }
+    if (savedSSID.length() > 0 && savedSSID != lastSSID && wifi_ssidVisible(savedSSID.c_str(), found)) {
+      if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
+        wifi_saveLastSSID(savedSSID.c_str());
+        return;
+      }
+    }
 
     // 3. No known SSID visible — try all without scan filter
     bool anyVisible = false;
     for (int i = 0; i < WIFI_NETWORK_COUNT; i++)
       if (wifi_ssidVisible(WIFI_NETWORKS[i].ssid, found)) { anyVisible = true; break; }
+    if (!anyVisible && wifi_ssidVisible(savedSSID.c_str(), found)) anyVisible = true;
 
     if (!anyVisible) {
       Serial.println("[WiFi] No known SSIDs visible — trying all without scan filter...");
       for (int i = 0; i < WIFI_NETWORK_COUNT; i++) {
         if (wifi_tryConnect(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].password)) {
           wifi_saveLastSSID(WIFI_NETWORKS[i].ssid);
+          return;
+        }
+      }
+      if (savedSSID.length() > 0) {
+        if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
+          wifi_saveLastSSID(savedSSID.c_str());
           return;
         }
       }

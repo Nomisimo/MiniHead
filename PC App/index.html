@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nano Moving Light</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -79,8 +81,8 @@
         <button class="net-btn primary"                    onclick="nh_sendLive()">SEND LIVE</button>
         <button class="net-btn purple"                     onclick="nh_addToCue()">ADD TO CUE ▾</button>
         <button class="net-btn" id="nh_patchToggle"        onclick="nh_togglePatchMode()">PATCH</button>
-        <button class="net-btn" id="nh_editBtn"            onclick="nh_startEdit()" style="color:#008000;font-weight:bold;">EDIT</button>
-        <button class="net-btn" id="nh_saveBtn"            onclick="nh_stopEdit()" style="display:none;color:#800000;font-weight:bold;outline:1px solid #800000;outline-offset:-3px;">SAVE ✓</button>
+        <button class="net-btn" id="nh_editBtn"            onclick="nh_startEdit()" style="border-color:var(--success);color:var(--success);">EDIT</button>
+        <button class="net-btn" id="nh_saveBtn"            onclick="nh_stopEdit()" style="display:none;border-color:var(--accent);color:var(--accent);">SAVE ✓</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
         <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Select:</span>
@@ -102,7 +104,7 @@
         </div>
       </div>
 
-      <div style="overflow-x:auto;" id="nh_tableWrap">
+      <div style="overflow-x:auto;" id="nh_tableWrap" class="nh-locked">
         <table class="heads-table">
           <thead>
             <tr>
@@ -187,9 +189,10 @@
     </div>
   </div>
 
-  <!-- Rainbow -->
+  <!-- Rainbow + Demo -->
   <div class="panel area-rainbow col-right">
     <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW // ALL HEADS</button>
+    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">DEMO // ALL HEADS</button>
   </div>
 
   <!-- Serial -->
@@ -212,7 +215,7 @@
     <div id="cueEditList"></div>
     <div style="margin-top:10px;padding:0 16px;">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
-      <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;background:#ffffff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000;padding:4px 6px;font-family:var(--mono);font-size:11px;border-radius:0;outline:none;">
+      <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;">
     </div>
     <div class="modal-footer">
       <button class="btn primary" onclick="cueEditSave()">SAVE</button>
@@ -224,7 +227,7 @@
 <!-- ── DMX Patch Grid inline script ── -->
 <script>
 (function(){
-  var pg_uni    = 0;
+  var pg_uni    = 1;
   var pg_patches = [];
   var DMX_FP    = 7;
   var COLS      = 32;
@@ -245,8 +248,8 @@
   }
 
   function pg_buildTabs(){
-    var unis=[0];
-    pg_patches.forEach(function(p){if(unis.indexOf(p.universe)<0)unis.push(p.universe);});
+    var unis=[1];
+    pg_patches.forEach(function(p){if(p.universe>=1&&unis.indexOf(p.universe)<0)unis.push(p.universe);});
     unis.sort(function(a,b){return a-b;});
     var c=document.getElementById('pg_uniTabs'); if(!c)return;
     c.innerHTML='';
@@ -347,12 +350,14 @@
     nhEditMode = true;
     document.getElementById('nh_editBtn').style.display = 'none';
     document.getElementById('nh_saveBtn').style.display = '';
+    document.getElementById('nh_tableWrap').classList.remove('nh-locked');
     if(typeof toast==='function') toast('Edit mode — refresh paused');
   };
   window.nh_stopEdit = function() {
     nhEditMode = false;
     document.getElementById('nh_editBtn').style.display = '';
     document.getElementById('nh_saveBtn').style.display = 'none';
+    document.getElementById('nh_tableWrap').classList.add('nh-locked');
     nh_load();
     if(typeof toast==='function') toast('Saved — refresh resumed');
   };
@@ -473,9 +478,9 @@
         var nameAckSt=nameAcks[h.mac],nameIcon=nh_ackIcon(nameAckSt);
         var patchCells;
         if(h.fixID>0&&anPatch){
-          patchCells='<td><input type="number" style="width:38px;background:#fff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000;padding:2px 4px;font-size:11px;border-radius:0;text-align:center;-moz-appearance:textfield;" value="'+anPatch.universe+'" min="0" max="32767" onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
-            '<td><input type="number" style="width:38px;background:#fff;border:1px solid #808080;border-top-color:#404040;border-left-color:#404040;box-shadow:inset 1px 1px 0 #404040;color:#000080;padding:2px 4px;font-size:11px;border-radius:0;text-align:center;-moz-appearance:textfield;" value="'+anPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
-            '<td style="white-space:nowrap;"><button style="width:22px;height:22px;border:1px solid #808080;border-top-color:#fff;border-left-color:#fff;box-shadow:inset 1px 1px 0 #dfdfdf;background:#c0c0c0;color:#800000;font-weight:bold;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+h.fixID+')">&#10005;</button>'+patchIcon+'</td>';
+          patchCells='<td><input class="patch-num-input" type="number" value="'+anPatch.universe+'" min="1" max="32767" onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
+            '<td><input class="patch-num-input" type="number" value="'+anPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
+            '<td style="white-space:nowrap;"><button class="icon-btn del" onclick="nh_patchDel('+h.fixID+')">&#10005;</button>'+patchIcon+'</td>';
         } else if(h.fixID>0){
           patchCells='<td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td><td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td>'+
             '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
@@ -511,7 +516,7 @@
     });
     if(offline.length>0){
       var sep=document.createElement('tr');
-      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;padding:5px 0;border-top:1px solid #808080;">── OFFLINE ──</td>';
+      sep.innerHTML='<td colspan="11" style="text-align:center;color:var(--text-dim);font-size:9px;padding:5px 0;border-top:1px solid var(--border);">── OFFLINE ──</td>';
       tbody.appendChild(sep);
       offline.forEach(function(f){
         var sel=selectedOfflineFixIDs.indexOf(f.id)>=0;
@@ -520,9 +525,9 @@
         var offPatchIcon=nh_ackIcon(patchAcks[f.id]);
         var offPatchCells;
         if(offPatch){
-          offPatchCells='<td><input type="number" style="width:38px;" value="'+offPatch.universe+'" min="0" max="32767" onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
-            '<td><input type="number" style="width:38px;" value="'+offPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
-            '<td><button style="width:22px;height:22px;border:1px solid #808080;background:#c0c0c0;color:#800000;font-weight:bold;cursor:pointer;font-size:11px;" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
+          offPatchCells='<td><input class="patch-num-input" type="number" value="'+offPatch.universe+'" min="1" max="32767" onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
+            '<td><input class="patch-num-input" type="number" value="'+offPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
+            '<td><button class="icon-btn del" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
         } else if(f.id>0){
           offPatchCells='<td style="text-align:center;color:var(--text-dim);">—</td><td style="text-align:center;color:var(--text-dim);">—</td>'+
             '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
@@ -536,7 +541,7 @@
           '<td style="color:var(--text-dim);">'+(f.mac?('&#8230;'+f.mac.slice(-8)):'—')+'</td>'+
           '<td>—</td><td><span class="role-badge">OFFLINE</span></td>'+
           offPatchCells+
-          '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" style="color:#800000;border-color:#800000;">&#10005;</button></td><td></td>';
+          '<td class="identify-col"><button class="identify-btn" onclick="nh_deleteFixture('+f.id+')" style="color:var(--danger);border-color:var(--danger);">&#10005;</button></td><td></td>';
         tbody.appendChild(tr);
       });
     }
@@ -549,7 +554,7 @@
       '<td><input type="text" id="nh_newName" placeholder="Name..." class="add-input" style="width:78px;"></td>'+
       '<td><input type="text" id="nh_newMac" placeholder="MAC (opt)" class="add-input" style="width:88px;font-size:10px;color:var(--text-dim);"></td>'+
       '<td colspan="5"></td>'+
-      '<td class="identify-col"><button class="identify-btn" onclick="nh_addFixture()" style="color:#008000;border-color:#008000;">+</button></td>'+
+      '<td class="identify-col"><button class="identify-btn" onclick="nh_addFixture()" style="color:var(--success);border-color:var(--success);">+</button></td>'+
       '<td></td>';
     tbody.appendChild(addRow);
 
@@ -589,7 +594,7 @@
 
   window.nh_patchUpdate=function(fixID,uni,addr){var p=anPatches.find(function(x){return x.fixID===fixID;});if(!p)return;var isOnline=headsData.some(function(h){return h.fixID===fixID;});var data={universe:uni!==null?uni:p.universe,startAddr:addr!==null?addr:p.startAddr};fetch('/api/artnet/patch/'+fixID,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){if(res.ok){p.universe=data.universe;p.startAddr=data.startAddr;if(isOnline){patchAcks[fixID]={status:'pending',ts:Date.now()/1000};nh_render();}if(typeof toast==='function')toast(isOnline?'Patch sent — waiting for ESP…':'Patch saved (ESP offline)');}else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Patch conflict','err');nh_load();}});};
   window.nh_patchDel=function(fixID){fetch('/api/artnet/patch/'+fixID,{method:'DELETE'}).then(function(){anPatches=anPatches.filter(function(p){return p.fixID!==fixID;});delete patchAcks[fixID];nh_render();if(typeof toast==='function')toast('Patch removed');});};
-  window.nh_patchCreate=function(fixID){var DMX_FP=7,used=anPatches.filter(function(p){return p.universe===0;}),addr=1;used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){if(p.startAddr<=addr&&addr<p.startAddr+DMX_FP)addr=p.startAddr+DMX_FP;});if(addr+DMX_FP-1>512){if(typeof toast==='function')toast('Universe 0 full','err');return;}var isOnline2=headsData.some(function(h){return h.fixID===fixID;});fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:fixID,universe:0,startAddr:addr})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){if(res.ok){anPatches.push({fixID:fixID,universe:0,startAddr:addr});if(isOnline2)patchAcks[fixID]={status:'pending',ts:Date.now()/1000};nh_render();if(typeof toast==='function')toast(isOnline2?'Patched Fix#'+fixID+' → Uni 0 Addr '+addr:'Patch saved (ESP offline)');}else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Patch conflict','err');}});};
+  window.nh_patchCreate=function(fixID){var DMX_FP=7,used=anPatches.filter(function(p){return p.universe===1;}),addr=1;used.sort(function(a,b){return a.startAddr-b.startAddr;}).forEach(function(p){if(p.startAddr<=addr&&addr<p.startAddr+DMX_FP)addr=p.startAddr+DMX_FP;});if(addr+DMX_FP-1>512){if(typeof toast==='function')toast('Universe 1 full','err');return;}var isOnline2=headsData.some(function(h){return h.fixID===fixID;});fetch('/api/artnet/patch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fixID:fixID,universe:1,startAddr:addr})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(res){if(res.ok){anPatches.push({fixID:fixID,universe:1,startAddr:addr});if(isOnline2)patchAcks[fixID]={status:'pending',ts:Date.now()/1000};nh_render();if(typeof toast==='function')toast(isOnline2?'Patched Fix#'+fixID+' → Uni 1 Addr '+addr:'Patch saved (ESP offline)');}else{if(typeof toast==='function')toast((res.d&&res.d.message)||'Patch conflict','err');}});};
 
 })();
 </script>

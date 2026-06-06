@@ -211,6 +211,50 @@ def _unicast_all(cmd):
         _send_udp_cmd(ip, cmd, mac)
 
 
+def _artpoll_send():
+    """Broadcast ArtPoll on port 6454, collect ArtPollReply packets for 2 s.
+    Returns a list of {"ip", "name", "universe"} dicts — one per reply."""
+    ARTNET_PORT = 6454
+    # Build 14-byte ArtPoll packet
+    pkt = bytearray(14)
+    pkt[0:8] = b"Art-Net\x00"
+    pkt[8]   = 0x00; pkt[9] = 0x20    # OpCode 0x2000 LE
+    pkt[10]  = 0;    pkt[11] = 14     # ProtVer = 14
+    pkt[12]  = 0x06                   # TalkToMe: send reply on change, unicast
+    pkt[13]  = 0x10                   # Priority: DpLow
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(2.0)
+        sock.bind(("", ARTNET_PORT))
+        sock.sendto(bytes(pkt), ("255.255.255.255", ARTNET_PORT))
+        nodes = []
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            try:
+                data, addr = sock.recvfrom(512)
+                if len(data) < 214: continue
+                if data[0:8] != b"Art-Net\x00": continue
+                opcode = data[8] | (data[9] << 8)
+                if opcode != 0x2100: continue            # not ArtPollReply
+                ip_str = f"{data[10]}.{data[11]}.{data[12]}.{data[13]}"
+                name   = data[26:44].rstrip(b"\x00").decode("ascii", errors="replace")
+                net    = data[18] & 0x7F
+                sub    = data[19] & 0x0F
+                sw     = data[190] & 0x0F
+                universe = (net << 8) | (sub << 4) | sw
+                nodes.append({"ip": ip_str, "name": name or "MiniHead", "universe": universe})
+            except socket.timeout:
+                break
+            except Exception:
+                pass
+        sock.close()
+        return nodes
+    except Exception as e:
+        print(f"[artpoll] error: {e}")
+        return []
+
 def _push_patch_to_esp(fid, uni, addr):
     """Push a patch record to every online ESP whose fixID matches fid.
     The ESP stores it in /artnet.json so its native ArtNet receiver can apply it.
@@ -676,6 +720,19 @@ def api_anim_speed():
     speed = max(0.1, min(3.0, speed))
     _unicast_all(f"SPEED:{speed:.2f}")
     return jsonify({"status": "ok", "speed": speed})
+
+@app.route("/api/artnet/poll", methods=["POST"])
+def api_artnet_poll():
+    nodes = _artpoll_send()
+    with patches_lock:
+        existing_unis = {p["universe"] for p in patches}
+        for node in nodes:
+            uni = node["universe"]
+            if uni > 0 and uni not in existing_unis:
+                patches.append({"fixID": 0, "universe": uni, "startAddr": 1})
+                existing_unis.add(uni)
+    _save_data()
+    return jsonify({"status": "ok", "nodes": nodes})
 
 # ── Cues ──────────────────────────────────────────────────────────────────────
 @app.route("/api/cues")

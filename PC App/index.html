@@ -127,6 +127,7 @@
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Patch Fix#:</span>
         <input type="number" id="pg_fixSel" min="1" max="999" value="1" style="width:44px;" title="Fix# to patch when clicking an empty channel">
+        <button class="net-btn" onclick="pg_poll()">POLL NODES</button>
         <button class="net-btn" onclick="pg_clearAll()">CLEAR ALL</button>
         <span id="pg_info" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);"></span>
       </div>
@@ -319,6 +320,14 @@
     var pending=fids.length;
     fids.forEach(function(fid){fetch('/api/artnet/patch/'+fid,{method:'DELETE'}).then(function(){if(--pending===0)pg_load();});});
     if(typeof toast==='function')toast('Clearing '+fids.length+' patch(es) from Uni '+pg_uni);
+  };
+
+  window.pg_poll=function(){
+    fetch('/api/artnet/poll',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
+      if(typeof toast==='function')toast('Found '+d.nodes.length+' node(s)');
+      pg_load();
+      if(typeof nh_load==='function')nh_load();
+    }).catch(function(){if(typeof toast==='function')toast('Poll failed','err');});
   };
 
   window.pg_reload=pg_load;

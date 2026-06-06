@@ -151,21 +151,83 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
   }
 }
 
-// ── Art-Net ArtDmx packet parser ──────────────────────────────────
+// ── ArtPollReply ──────────────────────────────────────────────────
+// Sent unicast to the ArtPoll originator. One reply per configured patch
+// (or one reply with universe 0 if no patches exist).
+static void artnet_sendPollReply(IPAddress dest) {
+  IPAddress localIP = WiFi.localIP();
+
+  uint8_t mac[6] = {};
+  sscanf(ownMAC, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+         &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+
+  int count = max(1, artnetPatchCount);
+  for (int pi = 0; pi < count; pi++) {
+    uint16_t uni  = (pi < artnetPatchCount) ? artnetPatches[pi].universe : 0;
+    uint8_t  net  = (uni >> 8) & 0x7F;
+    uint8_t  sub  = (uni >> 4) & 0x0F;
+    uint8_t  sw   = uni & 0x0F;
+
+    uint8_t reply[239] = {};
+    memcpy(reply, "Art-Net\0", 8);
+    reply[8]  = 0x00; reply[9]  = 0x21;               // OpCode 0x2100 LE
+    reply[10] = localIP[0]; reply[11] = localIP[1];    // IP address
+    reply[12] = localIP[2]; reply[13] = localIP[3];
+    reply[14] = 0x36; reply[15] = 0x19;               // Port 6454 LE
+    reply[16] = 0;    reply[17] = 14;                  // VersInfo = 14 (Art-Net 4)
+    reply[18] = net;  reply[19] = sub;                  // NetSwitch / SubSwitch
+    reply[20] = 0xFF; reply[21] = 0xFF;                // Oem = 0xFFFF (general)
+    // [22] UbeaVersion = 0, [23] Status1 = 0
+    // [24-25] EstaMan = 0x0000
+    strncpy((char*)(reply + 26), ownName[0] ? ownName : "MiniHead", 17); // ShortName
+    strncpy((char*)(reply + 44), "MiniHead RGBW Moving Light", 63);       // LongName
+    snprintf((char*)(reply + 108), 64, "#0001 [0000] OK");                // NodeReport
+    reply[173] = 1;                                    // NumPorts = 1
+    reply[174] = 0x80;                                 // PortTypes[0] = DMX output
+    reply[182] = 0x80;                                 // GoodOutputA[0] = transmitting
+    reply[186] = sw;                                   // SwIn[0]
+    reply[190] = sw;                                   // SwOut[0]
+    reply[196] = 100;                                  // AcnPriority
+    // [204] Style = 0x00 (StNode)
+    memcpy(reply + 207, mac, 6);                       // MAC
+    reply[210] = localIP[0]; reply[211] = localIP[1]; // BindIp
+    reply[212] = localIP[2]; reply[213] = localIP[3];
+    reply[214] = 0x08;                                 // Status2 = DHCP capable
+
+    _artnetUdp.beginPacket(dest, ARTNET_PORT);
+    _artnetUdp.write(reply, 239);
+    _artnetUdp.endPacket();
+  }
+}
+
+// ── Art-Net packet parser ─────────────────────────────────────────
 // Spec: http://www.artisticlicence.com/ArtNetSpec.pdf  §Table 1
 static void artnet_parsePacket(uint8_t* data, size_t len) {
-  if (len < 20) return;
+  if (len < 12) return;
   // ID: "Art-Net\0"
   if (memcmp(data, "Art-Net\0", 8) != 0) return;
-  // OpCode: ArtDmx = 0x5000, transmitted LE
+  // OpCode: transmitted LE (bytes 8-9)
   uint16_t opcode = (uint16_t)data[8] | ((uint16_t)data[9] << 8);
-  if (opcode != 0x5000) return;
+
+  if (opcode == 0x2000) {                              // ArtPoll — reply and return
+    artnet_sendPollReply(_artnetUdp.remoteIP());
+    return;
+  }
+  if (opcode != 0x5000) return;                        // not ArtDmx — ignore
+  if (len < 20) return;
+
+  // ProtVer (bytes 10-11, BE): MUST be ≥ 14
+  uint16_t protVer = ((uint16_t)data[10] << 8) | data[11];
+  if (protVer < 14) return;
+
   uint8_t  sequence = data[12];
   // Universe: LE, 15-bit (bytes 14-15)
   uint16_t universe = (uint16_t)data[14] | ((uint16_t)data[15] << 8);
-  // Length: BE (bytes 16-17), 2–512, always even
-  uint16_t length   = ((uint16_t)data[16] << 8) | (uint16_t)data[17];
+  // Length: BE (bytes 16-17) — MUST be even and ≥ 2
+  uint16_t length   = ((uint16_t)data[16] << 8) | data[17];
+  if (length < 2 || (length & 1) != 0) return;
   if (len < (size_t)(18 + length)) return;
+
   artnet_onDmxFrame(universe, length, sequence, data + 18);
 }
 

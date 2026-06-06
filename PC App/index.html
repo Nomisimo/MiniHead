@@ -476,12 +476,13 @@
         var anPatch=(h.fixID>0)?anPatches.find(function(p){return p.fixID===h.fixID;}):null;
         var patchAckSt=patchAcks[h.fixID],patchIcon=nh_ackIcon(patchAckSt);
         var nameAckSt=nameAcks[h.mac],nameIcon=nh_ackIcon(nameAckSt);
+        var isArtnet=h.mode==='ARTNET';
         var patchCells;
-        if(h.fixID>0&&anPatch){
+        if(isArtnet&&h.fixID>0&&anPatch){
           patchCells='<td><input class="patch-num-input" type="number" value="'+anPatch.universe+'" min="1" max="32767" onchange="nh_patchUpdate('+h.fixID+',+this.value,null)"></td>'+
             '<td><input class="patch-num-input" type="number" value="'+anPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+h.fixID+',null,+this.value)"></td>'+
             '<td style="white-space:nowrap;"><button class="icon-btn del" onclick="nh_patchDel('+h.fixID+')">&#10005;</button>'+patchIcon+'</td>';
-        } else if(h.fixID>0){
+        } else if(isArtnet&&h.fixID>0){
           patchCells='<td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td><td style="color:var(--text-dim);font-size:10px;text-align:center;">—</td>'+
             '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+h.fixID+')">+DMX</button></td>';
         } else {
@@ -528,11 +529,8 @@
           offPatchCells='<td><input class="patch-num-input" type="number" value="'+offPatch.universe+'" min="1" max="32767" onchange="nh_patchUpdate('+f.id+',+this.value,null)"></td>'+
             '<td><input class="patch-num-input" type="number" value="'+offPatch.startAddr+'" min="1" max="512" onchange="nh_patchUpdate('+f.id+',null,+this.value)"></td>'+
             '<td><button class="icon-btn del" onclick="nh_patchDel('+f.id+')">&#10005;</button>'+offPatchIcon+'</td>';
-        } else if(f.id>0){
-          offPatchCells='<td style="text-align:center;color:var(--text-dim);">—</td><td style="text-align:center;color:var(--text-dim);">—</td>'+
-            '<td><button class="net-btn" style="padding:2px 6px;font-size:10px;" onclick="nh_patchCreate('+f.id+')">+DMX</button></td>';
         } else {
-          offPatchCells='<td>—</td><td>—</td><td></td>';
+          offPatchCells='<td style="text-align:center;color:var(--text-dim);">—</td><td style="text-align:center;color:var(--text-dim);">—</td><td></td>';
         }
         tr.innerHTML=
           '<td><input type="checkbox"'+(sel?' checked':'')+' onchange="nh_toggleOffline('+f.id+',this.checked)"></td>'+

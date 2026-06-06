@@ -87,7 +87,7 @@
       <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
         <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Select:</span>
         <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_selectNoFix()">NO FIX#</button>
-        <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_selectNoDmx()">NO DMX</button>
+        <button class="net-btn" id="nh_noDmxBtn" style="padding:3px 10px;font-size:10px;display:none;" onclick="nh_selectNoDmx()">NO DMX</button>
       </div>
 
       <div class="patch-bar" id="nh_patchBar">
@@ -121,7 +121,7 @@
     </div><!-- /network heads panel -->
 
     <!-- ── DMX Patch Grid Panel ── -->
-    <div class="panel" style="border-bottom:1px solid var(--border)">
+    <div class="panel" id="pg_panel" style="display:none;border-bottom:1px solid var(--border)">
       <div class="panel-title">// DMX Patch Grid</div>
       <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;" id="pg_uniTabs"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -558,6 +558,14 @@
 
     if(patchMode){tbody.querySelectorAll('.patch-assign-btn').forEach(function(btn){btn.textContent='→ Fix#'+patchNextID;});}
     nh_updateSelInfo();nh_updatePatchLabel();
+
+    var hasArtnet=headsData.some(function(h){return h.mode==='ARTNET';});
+    var pgPanel=document.getElementById('pg_panel');
+    var noDmxBtn=document.getElementById('nh_noDmxBtn');
+    var wasHidden=pgPanel&&pgPanel.style.display==='none';
+    if(pgPanel) pgPanel.style.display=hasArtnet?'':'none';
+    if(noDmxBtn) noDmxBtn.style.display=hasArtnet?'':'none';
+    if(hasArtnet&&wasHidden&&typeof pg_load==='function') pg_load();
   }
 
   window.nh_toggleSel=function(mac,checked){if(checked){if(selectedMACs.indexOf(mac)<0)selectedMACs.push(mac);}else{selectedMACs=selectedMACs.filter(function(m){return m!==mac;});}nh_render();};

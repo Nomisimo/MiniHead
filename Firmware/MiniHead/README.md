@@ -140,7 +140,7 @@ Set these in the **Tools** menu before every upload:
 | **Flash Frequency** | `80 MHz` |
 | **Flash Mode** | `QIO` |
 | **Flash Size** | `4MB (32Mb)` |
-| **Partition Scheme** | `Default 4MB with spiffs (1.2MB APP / 1.5MB SPIFFS)` |
+| **Partition Scheme** | `Huge APP (3MB No OTA/1MB SPIFFS` |
 | **Upload Speed** | `921600` |
 | **Port** | your ESP32's USB port |
 

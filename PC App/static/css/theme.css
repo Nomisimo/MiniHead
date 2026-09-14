@@ -119,12 +119,27 @@ input[type=range] { -webkit-appearance: none; appearance: none; background: tran
 input[type=range].vertical { -webkit-appearance: none; appearance: none; }
 
 input[type=range].vertical::-webkit-slider-runnable-track {
-  width: 3px;
+  width: 4px;
+  height: 100%;
   background: var(--text-dim);
   border-radius: 2px;
 }
 input[type=range].vertical::-webkit-slider-thumb {
   -webkit-appearance: none;
+  width: 28px; height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  border: 1px solid var(--bg);
+  margin-left: -12px; /* center 28px thumb on 4px track */
+}
+
+/* Firefox vertical slider */
+input[type=range].vertical::-moz-range-track {
+  width: 4px;
+  background: var(--text-dim);
+  border-radius: 2px;
+}
+input[type=range].vertical::-moz-range-thumb {
   width: 28px; height: 12px;
   border-radius: 2px;
   background: var(--accent);
@@ -135,6 +150,11 @@ input[type=range].vertical::-webkit-slider-thumb {
 .fader-g input[type=range]::-webkit-slider-thumb { background: #30c040; }
 .fader-b input[type=range]::-webkit-slider-thumb { background: #4080f0; }
 .fader-w input[type=range]::-webkit-slider-thumb { background: #c8c8d8; }
+
+.fader-r input[type=range]::-moz-range-thumb { background: #e04040; }
+.fader-g input[type=range]::-moz-range-thumb { background: #30c040; }
+.fader-b input[type=range]::-moz-range-thumb { background: #4080f0; }
+.fader-w input[type=range]::-moz-range-thumb { background: #c8c8d8; }
 
 .fader-r input[type=number] { color: #e04040; }
 .fader-g input[type=number] { color: #30c040; }

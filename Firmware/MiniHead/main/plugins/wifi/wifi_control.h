@@ -33,8 +33,7 @@ void udp_sendIdentifyOff(const char* ip, const char* mac);
 void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 #endif
 
-#define MAX_CUES    32
-#define MAX_TARGETS 16   // max FixID targets per cue
+// MAX_CUES and MAX_TARGETS are defined in config.h — edit them there.
 
 AsyncWebServer server(80);
 static bool _serverStarted = false;  // server.begin() must only be called once
@@ -193,6 +192,21 @@ static void sendHtmlProgmem(AsyncWebServerRequest* req,
   req->send(r);
 }
 
+// ── JSON string escape helper ─────────────────────────────────────
+static String _jsonEscapeStr(const char* s) {
+  String out;
+  out.reserve(strlen(s) + 4);
+  for (const char* p = s; *p; p++) {
+    if      (*p == '"')  out += "\\\"";
+    else if (*p == '\\') out += "\\\\";
+    else if (*p == '\n') out += "\\n";
+    else if (*p == '\r') out += "\\r";
+    else if (*p == '\t') out += "\\t";
+    else                 out += *p;
+  }
+  return out;
+}
+
 // ── Cue helpers ───────────────────────────────────────────────────
 
 String fixTargetsToJson(const Cue& c) {
@@ -203,7 +217,7 @@ String fixTargetsToJson(const Cue& c) {
 
 String cueToJson(const Cue& c) {
   return "{\"id\":" + String(c.id) +
-    ",\"name\":\"" + String(c.name) + "\"" +
+    ",\"name\":\"" + _jsonEscapeStr(c.name) + "\"" +
     ",\"r\":"   + c.r   + ",\"g\":" + c.g  +
     ",\"b\":"   + c.b   + ",\"w\":" + c.w  +
     ",\"pan\":" + c.pan + ",\"tilt\":" + c.tilt +
@@ -283,13 +297,13 @@ void handleSeqStatus(AsyncWebServerRequest* req)  { sendJson(req, 200, String("{
 void handleGetHeads(AsyncWebServerRequest* req) {
   String json = "[";
   json += "{\"mac\":\"" + String(ownMAC) + "\",\"ip\":\"" + String(ownIP) + "\""
-        + ",\"fixID\":" + String(ownFixID) + ",\"name\":\"" + String(ownName) + "\""
+        + ",\"fixID\":" + String(ownFixID) + ",\"name\":\"" + _jsonEscapeStr(ownName) + "\""
         + ",\"mode\":\"" + String(ownMode) + "\""
         + ",\"role\":\"LEADER\",\"self\":true}";
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active) continue;
     json += ",{\"mac\":\"" + String(peers[i].mac) + "\",\"ip\":\"" + String(peers[i].ip) + "\""
-          + ",\"fixID\":" + String(peers[i].fixID) + ",\"name\":\"" + String(peers[i].name) + "\""
+          + ",\"fixID\":" + String(peers[i].fixID) + ",\"name\":\"" + _jsonEscapeStr(peers[i].name) + "\""
           + ",\"mode\":\"" + String(peers[i].mode) + "\""
           + ",\"role\":\"" + (peers[i].role == ROLE_LEADER ? "LEADER" : "FOLLOWER") + "\",\"self\":false}";
   }
@@ -301,13 +315,13 @@ void handleGetFixtures(AsyncWebServerRequest* req) {
   String json = "[";
   bool first = true;
   if (ownFixID > 0) {
-    json += "{\"id\":" + String(ownFixID) + ",\"name\":\"" + String(ownName) + "\",\"mac\":\"" + String(ownMAC) + "\",\"online\":true,\"ip\":\"" + String(ownIP) + "\"}";
+    json += "{\"id\":" + String(ownFixID) + ",\"name\":\"" + _jsonEscapeStr(ownName) + "\",\"mac\":\"" + String(ownMAC) + "\",\"online\":true,\"ip\":\"" + String(ownIP) + "\"}";
     first = false;
   }
   for (int i = 0; i < peerCount; i++) {
     if (!peers[i].active || peers[i].fixID <= 0) continue;
     if (!first) json += ",";
-    json += "{\"id\":" + String(peers[i].fixID) + ",\"name\":\"" + String(peers[i].name) + "\",\"mac\":\"" + String(peers[i].mac) + "\",\"online\":true,\"ip\":\"" + String(peers[i].ip) + "\"}";
+    json += "{\"id\":" + String(peers[i].fixID) + ",\"name\":\"" + _jsonEscapeStr(peers[i].name) + "\",\"mac\":\"" + String(peers[i].mac) + "\",\"online\":true,\"ip\":\"" + String(peers[i].ip) + "\"}";
     first = false;
   }
   json += "]";

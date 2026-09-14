@@ -144,6 +144,9 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
         _preArtPan  = curPan; _preArtTilt = curTilt;
         _artnetHadPre = true;
       }
+      // Stop standalone animations so Art-Net takes full control.
+      rainbowActive = false;
+      demoActive    = false;
       if (logCfg.artnetEvents)
         Serial.printf("[ArtNet] Active — universe %d\n", universe);
     }

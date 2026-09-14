@@ -42,6 +42,26 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // Must be at least 8 characters. Use "" for an open (no-password) network.
 #define AP_PASSWORD "minihead"
 
+// ── WiFi watchdog ─────────────────────────────────────────────────
+// Interval (ms) between connectivity checks in loop().
+// After WIFI_WATCHDOG_MISSES consecutive disconnected checks a full
+// wifi_connectMulti() is triggered (blocking). Increase MISSES to tolerate
+// brief drops without reconnecting.
+#ifndef WIFI_WATCHDOG_INTERVAL_MS
+#define WIFI_WATCHDOG_INTERVAL_MS 15000
+#endif
+#ifndef WIFI_WATCHDOG_MISSES
+#define WIFI_WATCHDOG_MISSES 3
+#endif
+
+// ── Cue / sequencer limits ────────────────────────────────────────
+#ifndef MAX_CUES
+#define MAX_CUES    32
+#endif
+#ifndef MAX_TARGETS
+#define MAX_TARGETS 16
+#endif
+
 // ── BLE Provisioning ──────────────────────────────────────────────
 // Devices with an empty WIFI_NETWORKS[] start as SEEKER: they scan via
 // Bluetooth and receive encrypted credentials from a SENDER (a device

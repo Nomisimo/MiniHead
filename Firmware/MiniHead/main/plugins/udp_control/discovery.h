@@ -235,11 +235,10 @@ void discovery_setup() {
       char buf[192]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
       discovery_parseBeacon(buf, n);
     }
-    bool ledOn = ((millis() / 250) % 2 == 0);
-    setLED(ledOn?0:0, ledOn?30:0, ledOn?30:0, 0);
+    sled_peerListen(millis());
     delay(10);
   }
-  setLED(0,0,0,0);
+  sled_peerElection(millis());
 
   discovery_elect();
   _electionDone = true;

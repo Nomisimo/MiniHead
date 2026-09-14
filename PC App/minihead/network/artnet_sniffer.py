@@ -21,14 +21,10 @@ class ArtNetSniffer:
         log.info("[init] thread: artnet_sniffer")
 
     def _run(self) -> None:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        except AttributeError:
-            pass
-        sock.bind(("", config.ARTNET_PORT))
-        sock.settimeout(1.0)
+        import time
+        sock = self._bind_with_retry()
+        if sock is None:
+            return  # gave up after retries; error already logged
 
         while True:
             try:
@@ -46,9 +42,33 @@ class ArtNetSniffer:
             except socket.timeout:
                 pass
             except Exception as e:
-                log.warning("[artnet] %s", e)
+                log.warning("[artnet] recv error: %s", e)
 
             changed = self._state.update_active()
             if changed:
                 active = self._state.is_active()
                 log.info("[artnet] stream %s", "started" if active else "stopped")
+
+    def _bind_with_retry(self, retries: int = 5, delay: float = 5.0):
+        import time
+        for attempt in range(1, retries + 1):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except AttributeError:
+                    pass
+                sock.bind(("", config.ARTNET_PORT))
+                sock.settimeout(1.0)
+                log.info("[artnet] listening on UDP %d", config.ARTNET_PORT)
+                return sock
+            except OSError as e:
+                log.error(
+                    "[artnet] cannot bind port %d (attempt %d/%d): %s — "
+                    "is another Art-Net app running?",
+                    config.ARTNET_PORT, attempt, retries, e,
+                )
+                time.sleep(delay)
+        log.error("[artnet] gave up after %d attempts — Art-Net monitoring disabled", retries)
+        return None

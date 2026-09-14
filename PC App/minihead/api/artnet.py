@@ -70,6 +70,8 @@ def create_artnet_bp(
     @bp.delete("/patch/<int:fid>")
     def delete_patch_route(fid: int):
         patches.delete(fid)
+        with patch_acks_lock:
+            patch_acks.pop(fid, None)
         persistence.save_data(fixtures, patches)
         threading.Thread(
             target=_delete_from_esps, args=(fid, peers),
@@ -80,6 +82,8 @@ def create_artnet_bp(
     @bp.delete("/patch")
     def clear_patches():
         patches.clear()
+        with patch_acks_lock:
+            patch_acks.clear()
         persistence.save_data(fixtures, patches)
         return ok()
 

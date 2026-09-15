@@ -9,7 +9,7 @@
 //   plugins/artnet/artnet.h            — Art-Net DMX receiver + patch API
 // ─────────────────────────────────────────────────────────────────
 
-#include "../plugin_registry.h"
+#include "../../plugin_registry.h"
 #include "discovery_globals.h"
 #include "wifi_control.h"
 

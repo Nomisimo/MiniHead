@@ -127,9 +127,12 @@ static void fireCueToTargets(const Cue& c) {
 // ── HTTP handlers ─────────────────────────────────────────────────
 
 void handleGetCues(AsyncWebServerRequest* req) {
-  String json = "[";
+  String json;
+  json.reserve(cueCount * 150 + 2);  // ~150 bytes/cue worst-case; avoids reallocs under polling
+  json = "[";
   for (int i = 0; i < cueCount; i++) { if (i > 0) json += ","; json += cueToJson(cues[i]); }
-  sendJson(req, 200, json + "]");
+  json += "]";
+  sendJson(req, 200, json);
 }
 
 void handleSaveCue(AsyncWebServerRequest* req) {

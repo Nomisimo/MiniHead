@@ -24,7 +24,7 @@
 #include "core_globals.h"
 #include "log_config.h"
 #include "discovery_globals.h"
-#include "../storage/storage.h"
+#include "../storage.h"
 
 // ── UDP forward declarations ──────────────────────────────────────
 // Implemented by plugins/udp_control/udp_commands.h.
@@ -35,7 +35,7 @@ void udp_sendIdentifyOff(const char* ip, const char* mac);
 
 // ── ArtNet forward declarations ───────────────────────────────────
 #ifdef PLUGIN_ARTNET
-#include "../artnet/artnet_globals.h"
+#include "../plugins/artnet/artnet_globals.h"
 void artnet_upsertPatch(uint16_t universe, uint16_t startAddr);
 #endif
 

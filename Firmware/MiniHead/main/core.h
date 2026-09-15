@@ -2,7 +2,7 @@
 #define FIRMWARE_VERSION       "Modular v4.2 — LittleFS + AsyncUDP"
 #define FIRMWARE_VERSION_SHORT "4.2"
 #include "plugin_registry.h"
-#include "plugins/storage/storage.h"
+#include "storage.h"
 
 // ── Core Module ───────────────────────────────────────────────────
 // Handles: RGBW LED output, Servo Pan/Tilt, Rainbow/Demo effects,

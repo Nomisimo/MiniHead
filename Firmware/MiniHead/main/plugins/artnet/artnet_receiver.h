@@ -17,7 +17,7 @@
 #include "../../core.h"
 #include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
-#include "../storage/storage.h"
+#include "../../storage.h"
 
 // ── Global definitions ────────────────────────────────────────────
 ArtnetPatch   artnetPatches[MAX_PATCHES];

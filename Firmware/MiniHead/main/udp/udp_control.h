@@ -17,7 +17,7 @@
 // Must come after plugins/wifi/wifi.h in config.h.
 // ─────────────────────────────────────────────────────────────────
 
-#include "../../plugin_registry.h"
+#include "../plugin_registry.h"
 #include "../wifi/discovery_globals.h"
 #include "discovery.h"
 #include "udp_commands.h"

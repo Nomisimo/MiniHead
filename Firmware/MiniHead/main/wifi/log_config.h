@@ -4,7 +4,7 @@
 // Include this header before any plugin that uses logCfg.
 // ─────────────────────────────────────────────────────────────────
 #include <ArduinoJson.h>
-#include "../storage/storage.h"
+#include "../storage.h"
 
 struct LogConfig {
   bool artnetFrames     = false;  // per-frame R/G/B/W/Pan/Tilt values (very spammy)

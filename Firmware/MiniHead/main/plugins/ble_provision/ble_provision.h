@@ -21,9 +21,9 @@
 // ─────────────────────────────────────────────────────────────────
 
 #include "../../plugin_registry.h"
-#include "../storage/storage.h"
+#include "../../storage.h"
 #include "ble_provision_config.h"
-#include "../shared/crypto.h"
+#include "crypto.h"
 
 #include <Arduino.h>
 #include <WiFi.h>

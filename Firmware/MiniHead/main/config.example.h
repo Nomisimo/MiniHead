@@ -87,10 +87,10 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #ifdef PLUGIN_STARTUP_ANIMATION
 #include "plugins/startup_animation/startup_animation.h"
 #endif
-#include "plugins/wifi/wifi.h"                    // HTTP server, cues, sequencer
+#include "wifi/wifi.h"                    // HTTP server, cues, sequencer
 
 #ifdef PLUGIN_UDP_CONTROL
-#include "plugins/udp_control/udp_control.h"      // discovery + leader election + UDP commands
+#include "udp/udp_control.h"      // discovery + leader election + UDP commands
 #endif
 
 #ifdef PLUGIN_ARTNET
@@ -105,5 +105,5 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // When a plugin is disabled its symbols must still resolve at link time.
 
 #ifndef PLUGIN_UDP_CONTROL
-#include "plugins/wifi/discovery_stubs.h"
+#include "wifi/discovery_stubs.h"
 #endif

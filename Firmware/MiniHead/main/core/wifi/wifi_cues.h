@@ -133,9 +133,10 @@ void handleGetCues(AsyncWebServerRequest* req) {
 }
 
 void handleSaveCue(AsyncWebServerRequest* req) {
+  String body = _getBody(req);  // must be called before any early return — frees _tempObject
   if (cueCount >= MAX_CUES) { sendJson(req, 500, "{\"status\":\"error\",\"message\":\"Max cues reached\"}"); return; }
   JsonDocument doc;
-  if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
+  if (deserializeJson(doc, body)) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
   Cue& c = cues[cueCount];
   c.id = ++_cueIdSeq;
   strlcpy(c.name, doc["name"] | "Cue", sizeof(c.name));
@@ -160,13 +161,14 @@ void handleSaveCue(AsyncWebServerRequest* req) {
 }
 
 void handleUpdateCueTargets(AsyncWebServerRequest* req) {
+  String body = _getBody(req);  // must be called before any early return — frees _tempObject
   String path    = req->url();
   String trimmed = path.substring(0, path.lastIndexOf('/'));
   unsigned long id = trimmed.substring(trimmed.lastIndexOf('/') + 1).toInt();
   for (int i = 0; i < cueCount; i++) {
     if (cues[i].id != id) continue;
     JsonDocument doc;
-    if (deserializeJson(doc, _getBody(req))) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
+    if (deserializeJson(doc, body)) { sendJson(req, 400, "{\"status\":\"error\"}"); return; }
     JsonArray tArr = doc["fixTargets"].as<JsonArray>();
     cues[i].targetCount = 0;
     for (JsonVariant v : tArr) {
@@ -203,6 +205,7 @@ void handleDeleteCue(AsyncWebServerRequest* req) {
 }
 
 void handleFireCue(AsyncWebServerRequest* req) {
+  _getBody(req);  // body unused (ID is in URL) — call only to free _tempObject
   String path    = req->url();
   String trimmed = path.substring(0, path.lastIndexOf('/'));
   unsigned long id = trimmed.substring(trimmed.lastIndexOf('/') + 1).toInt();

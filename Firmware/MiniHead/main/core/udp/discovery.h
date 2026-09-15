@@ -249,69 +249,77 @@ void discovery_setup() {
 }
 
 void discovery_loop() {
+  // Packet reception — every tick, must not be rate-limited.
   int sz = _beaconUDP.parsePacket();
   if (sz > 0) {
     char buf[192]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
     discovery_parseBeacon(buf, n);
   }
 
-  static unsigned long _leaderGoneAt = 0;
-  static bool          _inHold       = false;
-  discovery_pruneStale();
+  // Maintenance — peer table scans run at 1 Hz.
+  // Peer state changes no faster than BEACON_INTERVAL_MS (2 s), so
+  // scanning every loop tick (~1–5 kHz) was pure waste.
+  static unsigned long _lastMaintenance = 0;
+  static unsigned long _leaderGoneAt    = 0;
+  static bool          _inHold          = false;
+  unsigned long now = millis();
+  if (now - _lastMaintenance >= 1000) {
+    _lastMaintenance = now;
+    discovery_pruneStale();
 
 #ifdef PLUGIN_ARTNET
-  {
-    static bool _hadLeader = false;
-    bool leaderNow = discovery_leaderAlive();
-    if (leaderNow && !_hadLeader) {
-      for (int i = 0; i < peerCount; i++) {
-        if (peers[i].active && peers[i].role == ROLE_LEADER) {
-          Serial.printf("[Discovery] PC Leader connected: %s  IP:%s\n", peers[i].mac, peers[i].ip);
-          break;
+    {
+      static bool _hadLeader = false;
+      bool leaderNow = discovery_leaderAlive();
+      if (leaderNow && !_hadLeader) {
+        for (int i = 0; i < peerCount; i++) {
+          if (peers[i].active && peers[i].role == ROLE_LEADER) {
+            Serial.printf("[Discovery] PC Leader connected: %s  IP:%s\n", peers[i].mac, peers[i].ip);
+            break;
+          }
         }
+        _hadLeader = true;
+      } else if (!leaderNow && _hadLeader) {
+        Serial.println("[Discovery] PC Leader lost");
+        _hadLeader = false;
       }
-      _hadLeader = true;
-    } else if (!leaderNow && _hadLeader) {
-      Serial.println("[Discovery] PC Leader lost");
-      _hadLeader = false;
     }
-  }
 #endif
 
 #ifndef PLUGIN_ARTNET
-  // Art-Net followers are permanently FOLLOWER — PC App is always the leader.
-  // Skip hold/re-elect entirely: there is no recovery action an ARTNET ESP can
-  // take, and the cycle just floods the serial log every 10 s.
-  if (discovery_leaderAlive()) {
-    _leaderGoneAt = 0; _inHold = false;
-  } else if (nodeRole == ROLE_FOLLOWER) {
-    if (_leaderGoneAt == 0) {
-      _leaderGoneAt = millis(); _inHold = true;
-      if (logCfg.discoveryEvents) Serial.println("[Discovery] Leader signal lost — holding...");
-    }
-    if (_inHold && millis() - _leaderGoneAt > HOLD_DURATION_MS) {
-      _inHold = false; _leaderGoneAt = 0;
-      if (logCfg.discoveryEvents) Serial.println("[Discovery] Hold expired — re-electing...");
-      discovery_elect();
-    }
-  }
-
-  // Safety net: if we think we're LEADER but an active peer would beat us,
-  // yield immediately — catches missed beacons and boot-phase FOLLOWER ads.
-  if (nodeRole == ROLE_LEADER) {
-    for (int i = 0; i < peerCount; i++) {
-      if (peers[i].active && _betterCandidate(peers[i].priority, peers[i].mac, 100, ownMAC)) {
-        if (logCfg.discoveryEvents)
-          Serial.printf("[Discovery] Better candidate %s (priority %d) active — yielding\n",
-                        peers[i].mac, peers[i].priority);
+    // Art-Net followers are permanently FOLLOWER — PC App is always the leader.
+    // Skip hold/re-elect entirely: there is no recovery action an ARTNET ESP can
+    // take, and the cycle just floods the serial log every 10 s.
+    if (discovery_leaderAlive()) {
+      _leaderGoneAt = 0; _inHold = false;
+    } else if (nodeRole == ROLE_FOLLOWER) {
+      if (_leaderGoneAt == 0) {
+        _leaderGoneAt = now; _inHold = true;
+        if (logCfg.discoveryEvents) Serial.println("[Discovery] Leader signal lost — holding...");
+      }
+      if (_inHold && now - _leaderGoneAt > HOLD_DURATION_MS) {
+        _inHold = false; _leaderGoneAt = 0;
+        if (logCfg.discoveryEvents) Serial.println("[Discovery] Hold expired — re-electing...");
         discovery_elect();
-        break;
       }
     }
-  }
-#endif  // !PLUGIN_ARTNET
 
-  unsigned long now = millis();
+    // Safety net: if we think we're LEADER but an active peer would beat us,
+    // yield immediately — catches missed beacons and boot-phase FOLLOWER ads.
+    if (nodeRole == ROLE_LEADER) {
+      for (int i = 0; i < peerCount; i++) {
+        if (peers[i].active && _betterCandidate(peers[i].priority, peers[i].mac, 100, ownMAC)) {
+          if (logCfg.discoveryEvents)
+            Serial.printf("[Discovery] Better candidate %s (priority %d) active — yielding\n",
+                          peers[i].mac, peers[i].priority);
+          discovery_elect();
+          break;
+        }
+      }
+    }
+#endif  // !PLUGIN_ARTNET
+  }  // end 1 Hz maintenance
+
   if (now - _lastBeaconSent >= BEACON_INTERVAL_MS) {
     strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
     discovery_sendBeacon();

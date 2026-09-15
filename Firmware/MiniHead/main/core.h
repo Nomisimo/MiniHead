@@ -79,9 +79,9 @@ void hueToRGB(uint8_t hue, uint8_t &r, uint8_t &g, uint8_t &b) {
 
 // ── Command parser ────────────────────────────────────────────────
 
-void applyCommand(const String& cmd) {
-  if (cmd.startsWith("RAINBOW:")) {
-    bool newState = (atoi(cmd.c_str() + 8) == 1);
+void applyCommand(const char* cmd) {
+  if (strncmp(cmd, "RAINBOW:", 8) == 0) {
+    bool newState = (atoi(cmd + 8) == 1);
     if (newState && !rainbowActive) {
       _preRainbowR = curR; _preRainbowG = curG; _preRainbowB = curB; _preRainbowW = curW;
     }
@@ -92,8 +92,8 @@ void applyCommand(const String& cmd) {
     return;
   }
 
-  if (cmd.startsWith("DEMO:")) {
-    bool newState = (atoi(cmd.c_str() + 5) == 1);
+  if (strncmp(cmd, "DEMO:", 5) == 0) {
+    bool newState = (atoi(cmd + 5) == 1);
     rainbowActive = false;          // mutually exclusive with rainbow
     // Reset hue accumulators so rainbow always starts from 0 after demo
     rainbowHue = 0; _rainbowHueF = 0.0f;
@@ -102,12 +102,12 @@ void applyCommand(const String& cmd) {
     return;
   }
 
-  if (cmd.startsWith("SPEED:")) {
-    animSpeed = constrain(atof(cmd.c_str() + 6), 0.1f, 3.0f);
+  if (strncmp(cmd, "SPEED:", 6) == 0) {
+    animSpeed = constrain(atof(cmd + 6), 0.1f, 3.0f);
     return;
   }
 
-  if (cmd == "BLACKOUT") {
+  if (strcmp(cmd, "BLACKOUT") == 0) {
     rainbowActive = false;
     demoActive    = false;
     demoT         = 0.0f;
@@ -115,25 +115,30 @@ void applyCommand(const String& cmd) {
     return;
   }
 
-  int r=curR,g=curG,b=curB,w=curW,pan=curPan,tilt=curTilt,pos=0;
+  // Parse comma-separated KEY:VALUE pairs — strtok on a local copy, no heap.
+  char buf[128];
+  strlcpy(buf, cmd, sizeof(buf));
+
+  int r=curR, g=curG, b=curB, w=curW, pan=curPan, tilt=curTilt;
   bool hasColor = false;   // true if the command contains any of R / G / B / W
-  while (pos < (int)cmd.length()) {
-    int comma = cmd.indexOf(',', pos);
-    if (comma<0) comma = cmd.length();
-    String tok = cmd.substring(pos, comma);
-    int col = tok.indexOf(':');
-    if (col>=0) {
-      String key = tok.substring(0,col); key.toUpperCase();
-      int val = tok.substring(col+1).toInt();
-      if      (key=="R")    { r    = constrain(val,0,255); hasColor = true; }
-      else if (key=="G")    { g    = constrain(val,0,255); hasColor = true; }
-      else if (key=="B")    { b    = constrain(val,0,255); hasColor = true; }
-      else if (key=="W")    { w    = constrain(val,0,255); hasColor = true; }
-      else if (key=="PAN")  pan  = constrain(val,0,270);
-      else if (key=="TILT") tilt = constrain(val,0,270);
+
+  char* tok = strtok(buf, ",");
+  while (tok) {
+    char* colon = strchr(tok, ':');
+    if (colon) {
+      *colon = 0;
+      for (char* p = tok; *p; p++) *p = toupper((unsigned char)*p);
+      int val = atoi(colon + 1);
+      if      (strcmp(tok, "R")    == 0) { r    = constrain(val, 0, 255); hasColor = true; }
+      else if (strcmp(tok, "G")    == 0) { g    = constrain(val, 0, 255); hasColor = true; }
+      else if (strcmp(tok, "B")    == 0) { b    = constrain(val, 0, 255); hasColor = true; }
+      else if (strcmp(tok, "W")    == 0) { w    = constrain(val, 0, 255); hasColor = true; }
+      else if (strcmp(tok, "PAN")  == 0) { pan  = constrain(val, 0, 270); }
+      else if (strcmp(tok, "TILT") == 0) { tilt = constrain(val, 0, 270); }
     }
-    pos = comma+1;
+    tok = strtok(nullptr, ",");
   }
+
   // Only kill rainbow and update LED when the command explicitly sets a color channel.
   // A pure PAN/TILT command must not touch rainbow or the LED at all —
   // the rainbow loop writes directly to the strip without updating curR/G/B/W,
@@ -141,7 +146,7 @@ void applyCommand(const String& cmd) {
   if (hasColor) {
     rainbowActive = false;
     demoActive    = false;          // explicit color command overrides all animations
-    setLED(r,g,b,w);
+    setLED(r, g, b, w);
   }
   setPan(pan); setTilt(tilt);
 }
@@ -170,7 +175,7 @@ void core_loop() {
     char c = Serial.read();
     if (c == '\n') {
       buf.trim();
-      if (buf.length() > 0) { applyCommand(buf); Serial.println("[OK] " + buf); }
+      if (buf.length() > 0) { applyCommand(buf.c_str()); Serial.println("[OK] " + buf); }
       buf = "";
     } else if (c != '\r') {
       buf += c;

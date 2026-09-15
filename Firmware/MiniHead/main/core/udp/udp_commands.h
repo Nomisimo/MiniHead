@@ -94,7 +94,7 @@ void udp_handlePacket(const char* data, int len) {
       // SETFIXID / SETNAME / SETPATCH are now handled via HTTP /api/config/*
       // Control commands (R:, G:, B:, W:, PAN:, TILT:, etc.) fall through:
       if (logCfg.udpVerbose) Serial.printf("[UDP] CMD for us: %s\n", cmd);
-      applyCommand(String(cmd));
+      applyCommand(cmd);
     }
     return;
   }

@@ -51,15 +51,15 @@ void handleSend(AsyncWebServerRequest* req) {
   JsonArray targets = doc["targets"].as<JsonArray>();
   if (targets.isNull() || targets.size() == 0) {
     rainbowActive = false; demoActive = false;
-    applyCommand(cmd);
+    applyCommand(cmd.c_str());
   } else {
     for (JsonVariant t : targets) {
       String mac = t.as<String>();
       if (mac == "*") {
         rainbowActive = false; demoActive = false;
-        applyCommand(cmd); udp_broadcastCommand(cmd.c_str()); break;
+        applyCommand(cmd.c_str()); udp_broadcastCommand(cmd.c_str()); break;
       } else if (mac == String(ownMAC) || mac == "self") {
-        rainbowActive = false; demoActive = false; applyCommand(cmd);
+        rainbowActive = false; demoActive = false; applyCommand(cmd.c_str());
       } else {
         for (int i = 0; i < peerCount; i++) {
           if (peers[i].active && String(peers[i].mac) == mac) {
@@ -76,9 +76,9 @@ void handleRainbow(AsyncWebServerRequest* req) {
   JsonDocument doc;
   deserializeJson(doc, _getBody(req));
   bool on = doc["on"] | false;
-  String cmd = on ? "RAINBOW:1" : "RAINBOW:0";
+  const char* cmd = on ? "RAINBOW:1" : "RAINBOW:0";
   applyCommand(cmd);
-  udp_broadcastCommand(cmd.c_str());
+  udp_broadcastCommand(cmd);
   Serial.printf("[WiFi] Rainbow global %s\n", on ? "ON" : "OFF");
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
@@ -87,9 +87,9 @@ void handleDemo(AsyncWebServerRequest* req) {
   JsonDocument doc;
   deserializeJson(doc, _getBody(req));
   bool on = doc["on"] | false;
-  String cmd = on ? "DEMO:1" : "DEMO:0";
+  const char* cmd = on ? "DEMO:1" : "DEMO:0";
   applyCommand(cmd);
-  udp_broadcastCommand(cmd.c_str());
+  udp_broadcastCommand(cmd);
   Serial.printf("[WiFi] Demo global %s\n", on ? "ON" : "OFF");
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
@@ -99,9 +99,9 @@ void handleAnimSpeed(AsyncWebServerRequest* req) {
   deserializeJson(doc, _getBody(req));
   float s = doc["speed"] | 1.0f;
   s = constrain(s, 0.1f, 3.0f);
-  String cmd = "SPEED:" + String(s, 2);
+  char cmd[16]; snprintf(cmd, sizeof(cmd), "SPEED:%.2f", s);
   applyCommand(cmd);
-  udp_broadcastCommand(cmd.c_str());
+  udp_broadcastCommand(cmd);
   sendJson(req, 200, "{\"status\":\"ok\"}");
 }
 

@@ -108,13 +108,13 @@ static void fireCueToTargets(const Cue& c) {
   Serial.printf("[Seq] Fire '%s': %s  toAll=%d\n", c.name, cmd.c_str(), (int)toAll);
   if (toAll) {
     rainbowActive = false; demoActive = false;
-    applyCommand(cmd);
+    applyCommand(cmd.c_str());
     udp_broadcastCommand(cmd.c_str());
     return;
   }
   for (int t = 0; t < c.targetCount; t++) {
     int fid = c.fixTargets[t];
-    if (ownFixID > 0 && ownFixID == fid) { rainbowActive = false; demoActive = false; applyCommand(cmd); }
+    if (ownFixID > 0 && ownFixID == fid) { rainbowActive = false; demoActive = false; applyCommand(cmd.c_str()); }
     for (int i = 0; i < peerCount; i++) {
       if (peers[i].active && peers[i].fixID == fid) {
         udp_sendCommand(peers[i].ip, peers[i].mac, cmd.c_str());

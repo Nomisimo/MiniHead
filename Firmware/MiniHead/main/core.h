@@ -81,7 +81,7 @@ void hueToRGB(uint8_t hue, uint8_t &r, uint8_t &g, uint8_t &b) {
 
 void applyCommand(const String& cmd) {
   if (cmd.startsWith("RAINBOW:")) {
-    bool newState = (cmd.substring(8).toInt() == 1);
+    bool newState = (atoi(cmd.c_str() + 8) == 1);
     if (newState && !rainbowActive) {
       _preRainbowR = curR; _preRainbowG = curG; _preRainbowB = curB; _preRainbowW = curW;
     }
@@ -93,7 +93,7 @@ void applyCommand(const String& cmd) {
   }
 
   if (cmd.startsWith("DEMO:")) {
-    bool newState = (cmd.substring(5).toInt() == 1);
+    bool newState = (atoi(cmd.c_str() + 5) == 1);
     rainbowActive = false;          // mutually exclusive with rainbow
     // Reset hue accumulators so rainbow always starts from 0 after demo
     rainbowHue = 0; _rainbowHueF = 0.0f;
@@ -103,7 +103,7 @@ void applyCommand(const String& cmd) {
   }
 
   if (cmd.startsWith("SPEED:")) {
-    animSpeed = constrain(cmd.substring(6).toFloat(), 0.1f, 3.0f);
+    animSpeed = constrain(atof(cmd.c_str() + 6), 0.1f, 3.0f);
     return;
   }
 

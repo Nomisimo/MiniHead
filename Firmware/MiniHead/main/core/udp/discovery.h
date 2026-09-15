@@ -243,7 +243,7 @@ void discovery_setup() {
   discovery_elect();
   _electionDone = true;
 
-  strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
+  { IPAddress _lip = WiFi.localIP(); snprintf(ownIP, sizeof(ownIP), "%d.%d.%d.%d", _lip[0], _lip[1], _lip[2], _lip[3]); }
   discovery_sendBeacon();
   _lastBeaconSent = millis();
 }
@@ -321,7 +321,8 @@ void discovery_loop() {
   }  // end 1 Hz maintenance
 
   if (now - _lastBeaconSent >= BEACON_INTERVAL_MS) {
-    strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
+    IPAddress _lip = WiFi.localIP();
+    snprintf(ownIP, sizeof(ownIP), "%d.%d.%d.%d", _lip[0], _lip[1], _lip[2], _lip[3]);
     discovery_sendBeacon();
     _lastBeaconSent = now;
   }

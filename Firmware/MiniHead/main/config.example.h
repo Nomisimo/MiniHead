@@ -28,6 +28,7 @@
 
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
+#include "status_led.h"            // boot-phase status LED — needs setLED from core.h
 #include "core/device_mode.h"      // runtime Network Mode (UDP vs Art-Net) — must load before wifi.h
 
 // ── WiFi network list ─────────────────────────────────────────────

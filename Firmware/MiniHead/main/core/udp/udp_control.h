@@ -31,8 +31,12 @@ void udp_control_setup() {
 }
 
 void udp_control_loop() {
-  discovery_loop();
-  _udp_cmds_loop();
+  discovery_loop();  // beacon send/receive always runs — Art-Net mode needs it
+                      // to detect whether the PC App leader is still around.
+  // Skip polling for fleet UDP commands while Art-Net is the active mode —
+  // nothing sends them in that mode, and checking every tick alongside the
+  // Art-Net receiver is exactly the simultaneous-load this mode switch avoids.
+  if (networkMode != MODE_ARTNET) _udp_cmds_loop();
 }
 
 REGISTER_PLUGIN(udp_control);

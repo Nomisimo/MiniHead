@@ -256,6 +256,14 @@ void artnet_receiver_setup() {
   else
     Serial.println("[ArtNet] No patch configured yet");
 
+  // Only bind the receiver socket when Art-Net is the ACTIVE runtime mode —
+  // Art-Net is always compiled in, but listening/parsing every tick alongside
+  // a fully active UDP fleet role is what overloads the ESP32-C3's single core.
+  if (networkMode != MODE_ARTNET) {
+    Serial.println("[ArtNet] Not the active network mode — receiver idle");
+    return;
+  }
+
   if (_artnetUdp.begin(ARTNET_PORT)) {
     Serial.printf("[ArtNet] Listening on port %d\n", ARTNET_PORT);
   } else {
@@ -264,6 +272,7 @@ void artnet_receiver_setup() {
 }
 
 void artnet_receiver_loop() {
+  if (networkMode != MODE_ARTNET) return;
   int sz = _artnetUdp.parsePacket();
   if (sz > 0) {
     // Capture sender before read() — remoteIP() may change after the buffer is consumed

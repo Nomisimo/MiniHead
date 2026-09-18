@@ -125,6 +125,18 @@ static void wifi_connectMulti() {
     }
   }
 
+  // Load networks added via the web UI (Saved Networks panel).
+  loadWifiNetworksFromFlash();
+
+  // Combine all three sources into one list — WIFI_NETWORKS[], the
+  // BLE-provisioned credential, and user-added networks — so the
+  // scan/retry logic below only has to iterate a single array.
+  WifiCredential runtimeNets[WIFI_NETWORK_COUNT + 1 + MAX_SAVED_NETWORKS];
+  int runtimeCount = 0;
+  for (int i = 0; i < WIFI_NETWORK_COUNT; i++) runtimeNets[runtimeCount++] = WIFI_NETWORKS[i];
+  if (savedSSID.length() > 0) runtimeNets[runtimeCount++] = { savedSSID.c_str(), savedPass.c_str() };
+  for (int i = 0; i < savedNetworkCount; i++) runtimeNets[runtimeCount++] = { savedNetworks[i].ssid, savedNetworks[i].pass };
+
   int failCycles = 0;
 
   while (true) {
@@ -141,55 +153,36 @@ static void wifi_connectMulti() {
 
     // 1. Try last-connected first (only if visible)
     if (lastSSID.length() > 0) {
-      for (int i = 0; i < WIFI_NETWORK_COUNT; i++) {
-        if (lastSSID == WIFI_NETWORKS[i].ssid && wifi_ssidVisible(WIFI_NETWORKS[i].ssid, found)) {
-          if (wifi_tryConnect(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].password)) {
-            wifi_saveLastSSID(WIFI_NETWORKS[i].ssid);
+      for (int i = 0; i < runtimeCount; i++) {
+        if (lastSSID == runtimeNets[i].ssid && wifi_ssidVisible(runtimeNets[i].ssid, found)) {
+          if (wifi_tryConnect(runtimeNets[i].ssid, runtimeNets[i].password)) {
+            wifi_saveLastSSID(runtimeNets[i].ssid);
             return;
           }
-        }
-      }
-      if (savedSSID == lastSSID && wifi_ssidVisible(savedSSID.c_str(), found)) {
-        if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
-          wifi_saveLastSSID(savedSSID.c_str());
-          return;
         }
       }
     }
 
     // 2. Try remaining visible networks in list order
-    for (int i = 0; i < WIFI_NETWORK_COUNT; i++) {
-      if (lastSSID == WIFI_NETWORKS[i].ssid) continue;  // already tried above
-      if (!wifi_ssidVisible(WIFI_NETWORKS[i].ssid, found)) continue;
-      if (wifi_tryConnect(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].password)) {
-        wifi_saveLastSSID(WIFI_NETWORKS[i].ssid);
-        return;
-      }
-    }
-    if (savedSSID.length() > 0 && savedSSID != lastSSID && wifi_ssidVisible(savedSSID.c_str(), found)) {
-      if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
-        wifi_saveLastSSID(savedSSID.c_str());
+    for (int i = 0; i < runtimeCount; i++) {
+      if (lastSSID == runtimeNets[i].ssid) continue;  // already tried above
+      if (!wifi_ssidVisible(runtimeNets[i].ssid, found)) continue;
+      if (wifi_tryConnect(runtimeNets[i].ssid, runtimeNets[i].password)) {
+        wifi_saveLastSSID(runtimeNets[i].ssid);
         return;
       }
     }
 
     // 3. No known SSID visible — try all without scan filter
     bool anyVisible = false;
-    for (int i = 0; i < WIFI_NETWORK_COUNT; i++)
-      if (wifi_ssidVisible(WIFI_NETWORKS[i].ssid, found)) { anyVisible = true; break; }
-    if (!anyVisible && wifi_ssidVisible(savedSSID.c_str(), found)) anyVisible = true;
+    for (int i = 0; i < runtimeCount; i++)
+      if (wifi_ssidVisible(runtimeNets[i].ssid, found)) { anyVisible = true; break; }
 
     if (!anyVisible) {
       Serial.println("[WiFi] No known SSIDs visible — trying all without scan filter...");
-      for (int i = 0; i < WIFI_NETWORK_COUNT; i++) {
-        if (wifi_tryConnect(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].password)) {
-          wifi_saveLastSSID(WIFI_NETWORKS[i].ssid);
-          return;
-        }
-      }
-      if (savedSSID.length() > 0) {
-        if (wifi_tryConnect(savedSSID.c_str(), savedPass.c_str())) {
-          wifi_saveLastSSID(savedSSID.c_str());
+      for (int i = 0; i < runtimeCount; i++) {
+        if (wifi_tryConnect(runtimeNets[i].ssid, runtimeNets[i].password)) {
+          wifi_saveLastSSID(runtimeNets[i].ssid);
           return;
         }
       }
@@ -210,7 +203,7 @@ static void wifi_connectMulti() {
 
 #ifdef PLUGIN_BLE_PROVISION
     ble_provision_pre_wifi();
-    if (WIFI_NETWORK_COUNT > 0) {
+    if (runtimeCount > 0) {
       unsigned long waitEnd = millis() + 10000;
       while (millis() < waitEnd) { sled_wifiRetry(millis()); delay(50); }
     }

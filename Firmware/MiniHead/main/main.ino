@@ -265,6 +265,29 @@ void loop() {
   // Process DNS in AP/captive-portal mode
   if (wifiAPMode) _dnsServer.processNextRequest();
 
+  // WiFi watchdog — detect prolonged disconnection and trigger a full reconnect.
+  // Checks every WIFI_WATCHDOG_INTERVAL_MS; reconnects after WIFI_WATCHDOG_MISSES
+  // consecutive misses (default: 3 × 15 s = 45 s total outage before reconnect).
+  if (!wifiAPMode) {
+    static unsigned long _wifiCheckAt = 0;
+    static uint8_t       _wifiMisses  = 0;
+    if (millis() > _wifiCheckAt) {
+      _wifiCheckAt = millis() + WIFI_WATCHDOG_INTERVAL_MS;
+      if (WiFi.status() != WL_CONNECTED) {
+        _wifiMisses++;
+        Serial.printf("[WiFi] Watchdog: disconnected (miss %u/%u)\n",
+                      _wifiMisses, WIFI_WATCHDOG_MISSES);
+        if (_wifiMisses >= WIFI_WATCHDOG_MISSES) {
+          Serial.println("[WiFi] Watchdog: triggering full reconnect");
+          _wifiMisses = 0;
+          wifi_connectMulti();
+        }
+      } else {
+        _wifiMisses = 0;
+      }
+    }
+  }
+
   core_loop();
   for (int i = 0; i < _pluginCount; i++)
     _plugins[i].loop();

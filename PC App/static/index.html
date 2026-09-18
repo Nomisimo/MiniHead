@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Nano Moving Light</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">NANO<span>/</span>ML <span style="font-size:10px;color:var(--text-dim)">CTRL</span></div>
+  <div class="connection-bar">
+    <div class="status-dot"></div>
+    <span class="ip-label" id="ipLabel">...</span>
+    <span style="color:var(--text-dim)">PC LEADER</span>
+    <span style="color:var(--text-dim);font-size:10px;margin-left:4px;" id="appVersion"></span>
+  </div>
+</header>
+
+<div id="artnet-bar">
+  <div id="artnet-bar-dot"></div>
+  <span>ART-NET</span>
+  <span id="artnet-live"></span>
+  <span id="artnet-bar-count"></span>
+</div>
+
+<div class="main">
+
+  <!-- ── Cues ─────────────────────────────────────────────────────────────── -->
+  <div class="panel area-cues">
+    <div class="panel-title">// Cues</div>
+    <div class="cue-list" id="cueList"></div>
+    <div class="save-cue-form">
+      <input type="text" id="cueName" placeholder="Cue name..." maxlength="30">
+      <button class="btn primary" onclick="saveCue()">SAVE</button>
+    </div>
+  </div>
+
+  <!-- ── Sequencer ──────────────────────────────────────────────────────────── -->
+  <div class="panel area-sequencer">
+    <div class="panel-title">// Sequencer</div>
+    <div class="seq-hint">Tap + on cues to add to sequence</div>
+    <div class="seq-controls">
+      <div class="seq-row">
+        <div class="seq-label">INTERVAL</div>
+        <input type="number" id="seqInterval" value="1000" min="100" max="30000" step="100" style="width:80px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">ms</span>
+      </div>
+      <div class="seq-row">
+        <div class="seq-label">LOOP</div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="seqLoop" checked style="accent-color:var(--accent3);width:18px;height:18px;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Repeat</span>
+        </label>
+      </div>
+    </div>
+    <div class="seq-buttons">
+      <button class="btn success" id="seqStartBtn" onclick="startSequencer()">START</button>
+      <button class="btn danger" onclick="stopSequencer()">STOP</button>
+    </div>
+    <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
+  </div>
+
+  <!-- ── Network Heads + DMX Patch Grid ────────────────────────────────────── -->
+  <div class="area-future" style="background:var(--bg)">
+
+    <div class="panel" style="border-bottom:1px solid var(--border)">
+      <div class="panel-title-network">// Network Heads</div>
+
+      <div class="heads-toolbar" style="display:flex;gap:8px;margin-bottom:6px;align-items:center;flex-wrap:wrap;">
+        <button class="net-btn" onclick="nh_selectAll()">SELECT ALL</button>
+        <button class="net-btn" onclick="nh_clearSel()">UNSELECT ALL</button>
+        <span class="heads-sel-info" id="nh_selInfo">No heads selected</span>
+        <button class="net-btn primary"                    onclick="nh_sendLive()">SEND LIVE</button>
+        <button class="net-btn purple"                     onclick="nh_addToCue()">ADD TO CUE ▾</button>
+        <button class="net-btn" id="nh_patchToggle"        onclick="nh_togglePatchMode()">PATCH</button>
+        <button class="net-btn" id="nh_editBtn"            onclick="nh_startEdit()" style="border-color:var(--success);color:var(--success);">EDIT</button>
+        <button class="net-btn" id="nh_saveBtn"            onclick="nh_stopEdit()" style="display:none;border-color:var(--accent);color:var(--accent);">SAVE ✓</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Select:</span>
+        <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_selectNoFix()">NO FIX#</button>
+        <button class="net-btn" id="nh_noDmxBtn" style="padding:3px 10px;font-size:10px;display:none;" onclick="nh_selectNoDmx()">NO DMX</button>
+      </div>
+
+      <div class="patch-bar" id="nh_patchBar">
+        <span class="patch-bar-label">// Patch</span>
+        <span class="patch-next">Start&nbsp;Fix#</span>
+        <input type="number" id="nh_patchStart" class="patch-start" value="1" min="1" max="999" oninput="nh_onStartChange()">
+        <span class="patch-next">→&nbsp;Next:&nbsp;<strong id="nh_patchNextLabel">1</strong></span>
+        <span class="patch-next" id="nh_patchSelCount" style="color:var(--text-dim);"></span>
+        <div class="patch-btn-row">
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_resetPatchCounter()">RESET</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;color:var(--danger);border-color:var(--danger);" onclick="nh_clearFixIDs()">CLEAR FIX IDs</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;" onclick="nh_togglePatchMode()">CANCEL</button>
+          <button class="net-btn" style="padding:3px 10px;font-size:10px;color:var(--accent);font-weight:bold;" onclick="nh_patchDone()">DONE</button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;" id="nh_tableWrap" class="nh-locked">
+        <table class="heads-table">
+          <thead>
+            <tr><th></th><th>Fix#</th><th>Name</th><th>MAC</th><th>IP</th><th>Role</th><th>Uni</th><th>Addr</th><th></th><th class="identify-col">Identify</th><th></th></tr>
+          </thead>
+          <tbody id="nh_tbody">
+            <tr><td colspan="11" style="color:var(--text-dim);text-align:center;padding:20px 0;">Scanning...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel" id="pg_panel" style="display:none;border-bottom:1px solid var(--border)">
+      <div class="panel-title">// DMX Patch Grid</div>
+      <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;" id="pg_uniTabs"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Patch Fix#:</span>
+        <input type="number" id="pg_fixSel" min="1" max="999" value="1" style="width:44px;" title="Fix# to patch when clicking an empty channel">
+        <button class="net-btn" onclick="pg_poll()">POLL NODES</button>
+        <button class="net-btn" onclick="pg_clearAll()">CLEAR ALL</button>
+        <span id="pg_info" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);"></span>
+      </div>
+      <div style="overflow-x:auto;"><div id="pg_grid" class="pg-grid"></div></div>
+    </div>
+
+  </div>
+
+  <!-- ── Right column ───────────────────────────────────────────────────────── -->
+
+  <div class="panel area-light col-right">
+    <div class="panel-title">// Light Control</div>
+    <div class="faders-row">
+      <div class="fader-group fader-r">
+        <div class="fader-label">RED</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fR" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vR" oninput="document.getElementById('fR').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-g">
+        <div class="fader-label">GRN</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fG" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vG" oninput="document.getElementById('fG').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-b">
+        <div class="fader-label">BLU</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fB" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vB" oninput="document.getElementById('fB').value=this.value;onFader();">
+      </div>
+      <div class="fader-group fader-w">
+        <div class="fader-label">WHT</div>
+        <div class="vslider-wrap"><input type="range" class="vertical" min="0" max="255" value="0" id="fW" oninput="onFader()"></div>
+        <input type="number" min="0" max="255" value="0" id="vW" oninput="document.getElementById('fW').value=this.value;onFader();">
+      </div>
+    </div>
+    <div class="preview-row"><div class="led-preview" id="ledPreview"></div></div>
+  </div>
+
+  <div class="panel area-motion col-right">
+    <div class="panel-title">// Motion</div>
+    <div class="motion-row">
+      <div class="motion-label">PAN</div>
+      <input type="range" class="horizontal" min="0" max="270" value="135" id="fPan" oninput="document.getElementById('vPan').value=this.value;onMotion()">
+      <input type="number" min="0" max="270" value="135" id="vPan" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fPan').value=this.value;onMotion();">
+    </div>
+    <div class="motion-row">
+      <div class="motion-label">TILT</div>
+      <input type="range" class="horizontal" min="0" max="270" value="135" id="fTilt" oninput="document.getElementById('vTilt').value=this.value;onMotion()">
+      <input type="number" min="0" max="270" value="135" id="vTilt" style="width:52px;color:var(--accent2);" oninput="document.getElementById('fTilt').value=this.value;onMotion();">
+    </div>
+  </div>
+
+  <div class="panel area-rainbow col-right">
+    <button class="btn rainbow-btn" id="rainbowBtn" onclick="toggleRainbow()">RAINBOW</button>
+    <button class="btn demo-btn" id="demoBtn" onclick="toggleDemo()" style="margin-top:6px;width:100%;">◈ DEMO</button>
+    <button class="btn" id="blackoutBtn" onclick="blackout()" style="margin-top:6px;width:100%;color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">BLACKOUT</button>
+    <div class="motion-row" style="margin-top:10px;">
+      <div class="motion-label" style="min-width:54px;font-size:10px;">SPEED</div>
+      <input type="range" class="horizontal" min="10" max="300" value="100" step="5" id="fSpeed" oninput="onSpeed()">
+      <span id="vSpeed" style="font-family:var(--mono);font-size:11px;color:var(--accent2);min-width:36px;text-align:right;">1.0×</span>
+    </div>
+  </div>
+
+  <div class="panel area-serial col-right">
+    <div class="panel-title">// Serial</div>
+    <div class="serial-row">
+      <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45">
+      <button class="btn primary" onclick="sendRaw()">SEND</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<!-- Cue edit modal -->
+<div id="cueEditModal">
+  <div class="modal-box">
+    <div class="modal-title">// Edit Targets</div>
+    <div id="cueEditList"></div>
+    <div style="margin-top:10px;padding:0 16px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
+      <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn primary" onclick="cueEditSave()">SAVE</button>
+      <button class="btn" onclick="cueEditClose()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts — order matters: api first, main last -->
+<script src="js/api.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/cues.js"></script>
+<script src="js/sequencer.js"></script>
+<script src="js/artnet.js"></script>
+<script src="js/heads.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

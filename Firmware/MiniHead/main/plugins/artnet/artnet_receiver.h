@@ -17,7 +17,7 @@
 #include "../../core.h"
 #include "../wifi/log_config.h"
 #include "../wifi/discovery_globals.h"
-#include "../storage/storage.h"
+#include "../../storage.h"
 
 // ── Global definitions ────────────────────────────────────────────
 ArtnetPatch   artnetPatches[MAX_PATCHES];
@@ -144,6 +144,9 @@ static void artnet_onDmxFrame(uint16_t universe, uint16_t length,
         _preArtPan  = curPan; _preArtTilt = curTilt;
         _artnetHadPre = true;
       }
+      // Stop standalone animations so Art-Net takes full control.
+      rainbowActive = false;
+      demoActive    = false;
       if (logCfg.artnetEvents)
         Serial.printf("[ArtNet] Active — universe %d\n", universe);
     }

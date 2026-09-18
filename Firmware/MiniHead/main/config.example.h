@@ -42,6 +42,26 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // Must be at least 8 characters. Use "" for an open (no-password) network.
 #define AP_PASSWORD "minihead"
 
+// ── WiFi watchdog ─────────────────────────────────────────────────
+// Interval (ms) between connectivity checks in loop().
+// After WIFI_WATCHDOG_MISSES consecutive disconnected checks a full
+// wifi_connectMulti() is triggered (blocking). Increase MISSES to tolerate
+// brief drops without reconnecting.
+#ifndef WIFI_WATCHDOG_INTERVAL_MS
+#define WIFI_WATCHDOG_INTERVAL_MS 15000
+#endif
+#ifndef WIFI_WATCHDOG_MISSES
+#define WIFI_WATCHDOG_MISSES 3
+#endif
+
+// ── Cue / sequencer limits ────────────────────────────────────────
+#ifndef MAX_CUES
+#define MAX_CUES    32
+#endif
+#ifndef MAX_TARGETS
+#define MAX_TARGETS 16
+#endif
+
 // ── BLE Provisioning ──────────────────────────────────────────────
 // Devices with an empty WIFI_NETWORKS[] start as SEEKER: they scan via
 // Bluetooth and receive encrypted credentials from a SENDER (a device
@@ -67,10 +87,10 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #ifdef PLUGIN_STARTUP_ANIMATION
 #include "plugins/startup_animation/startup_animation.h"
 #endif
-#include "plugins/wifi/wifi.h"                    // HTTP server, cues, sequencer
+#include "core/wifi/wifi.h"               // HTTP server, cues, sequencer
 
 #ifdef PLUGIN_UDP_CONTROL
-#include "plugins/udp_control/udp_control.h"      // discovery + leader election + UDP commands
+#include "core/udp/udp_control.h"  // discovery + leader election + UDP commands
 #endif
 
 #ifdef PLUGIN_ARTNET
@@ -85,5 +105,5 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // When a plugin is disabled its symbols must still resolve at link time.
 
 #ifndef PLUGIN_UDP_CONTROL
-#include "plugins/wifi/discovery_stubs.h"
+#include "core/wifi/discovery_stubs.h"
 #endif

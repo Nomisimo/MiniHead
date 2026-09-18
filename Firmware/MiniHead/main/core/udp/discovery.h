@@ -8,14 +8,18 @@
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include "discovery_globals.h"
-#include "wifi_control.h"
+#include "../wifi/discovery_globals.h"
+#include "../wifi/wifi_control.h"
 
 // ── Globals (definitions) ─────────────────────────────────────────
 NodeRole nodeRole   = ROLE_UNDECIDED;
 char ownMAC[18]     = "";
 char ownIP[16]      = "";
+#ifdef PLUGIN_ARTNET
+char ownMode[8]     = "ARTNET";
+#else
 char ownMode[8]     = "UDP";
+#endif
 int  ownFixID       = 0;
 char ownName[32]    = "";
 Peer peers[MAX_PEERS];
@@ -25,7 +29,6 @@ int  peerCount      = 0;
 static WiFiUDP _beaconUDP;
 static unsigned long _lastBeaconSent = 0;
 static bool _electionDone = false;
-static bool _webServerStarted = false;
 
 // ── Storage (/discovery.json) ─────────────────────────────────────
 // Schema: {"fixID": 1, "name": "Head 1"}
@@ -58,7 +61,7 @@ Peer* discovery_findPeer(const char* mac) {
   return nullptr;
 }
 
-Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "", int priority = 100) {
+Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole role, const char* name = "", const char* mode = "UDP", int priority = 100) {
   Peer* p = discovery_findPeer(mac);
   if (!p) {
     for (int i = 0; i < peerCount; i++) {
@@ -70,9 +73,11 @@ Peer* discovery_addOrUpdate(const char* mac, const char* ip, int fixID, NodeRole
     }
     strncpy(p->mac, mac, 17); p->mac[17] = 0;
     p->name[0] = 0;
+    strlcpy(p->mode, "UDP", sizeof(p->mode));
   }
   strncpy(p->ip, ip, 15); p->ip[15] = 0;
   if (name && name[0]) strlcpy(p->name, name, sizeof(p->name));
+  if (mode && mode[0]) strlcpy(p->mode, mode, sizeof(p->mode));
   p->fixID    = fixID;
   p->priority = priority;
   p->role     = role;
@@ -109,6 +114,15 @@ bool discovery_leaderAlive() {
 // among equal-priority nodes so ESP-only rigs remain deterministic.
 
 void discovery_elect() {
+#ifdef PLUGIN_ARTNET
+  // Art-Net mode: PC App is always the leader — ESP never promotes itself.
+  if (nodeRole != ROLE_FOLLOWER) {
+    nodeRole = ROLE_FOLLOWER;
+    Serial.println("[Discovery] Art-Net mode — FOLLOWER only (PC App is leader)");
+    wifi_control_stop();
+  }
+  return;
+#endif
   discovery_pruneStale();  // exclude timed-out peers before building candidate list
 
   struct Candidate { char mac[18]; int priority; };
@@ -134,17 +148,12 @@ void discovery_elect() {
   if (iAmLeader && nodeRole != ROLE_LEADER) {
     nodeRole = ROLE_LEADER;
     Serial.println("[Discovery] ** I am the LEADER **");
-    // Always ensure the server is started — it may have been running in follower mode already.
-    if (!_webServerStarted) { wifi_control_setup(); _webServerStarted = true; }
-    else                    { wifi_control_promote(); }   // already started as follower → activate APIs
+    wifi_control_promote();
   } else if (!iAmLeader && nodeRole != ROLE_FOLLOWER) {
     nodeRole = ROLE_FOLLOWER;
     Serial.printf("[Discovery] I am a FOLLOWER. Leader: %s (priority %d)\n",
                   candidates[winIdx].mac, candidates[winIdx].priority);
-    // Start server even as a follower so browsers get a redirect instead of
-    // "connection refused" — prevents "Network heads plugin not available" errors.
-    if (!_webServerStarted) { wifi_control_setup_follower(); _webServerStarted = true; }
-    else                    { wifi_control_stop(); }
+    wifi_control_stop();
   }
 }
 
@@ -154,16 +163,18 @@ void discovery_sendBeacon() {
   char pkt[192];
   const char* roleStr = (nodeRole == ROLE_LEADER) ? "LEADER" : "FOLLOWER";
   snprintf(pkt, sizeof(pkt), "MINIHEAD|%s|%s|%d|%s|%s|%s|%d", ownMAC, ownIP, ownFixID, roleStr, ownName, ownMode, 100);
-  // Use directed subnet broadcast (e.g. 192.168.178.255) instead of
-  // 255.255.255.255 — Fritz!Box and similar routers don't reliably
-  // forward limited broadcasts across WiFi→Ethernet boundaries.
+
+  // 1) Directed subnet broadcast — for initial discovery before leader IP is known.
+  //    Fritz!Box and similar routers don't reliably forward 255.255.255.255.
   IPAddress _ip = WiFi.localIP(), _mask = WiFi.subnetMask();
   IPAddress _bcast(_ip[0]|(uint8_t)~_mask[0], _ip[1]|(uint8_t)~_mask[1],
                    _ip[2]|(uint8_t)~_mask[2], _ip[3]|(uint8_t)~_mask[3]);
   _beaconUDP.beginPacket(_bcast, BEACON_PORT);
   _beaconUDP.print(pkt); _beaconUDP.endPacket();
-  // Unicast to every known leader — guarantees delivery once their IP is known.
-  // Many APs silently drop broadcast after the initial ARP exchange.
+
+  // 2) Unicast to every known leader — guarantees delivery once the leader's IP
+  //    is known (typically after the first exchange). Many APs silently drop
+  //    broadcast after the initial ARP, so unicast is the reliable fallback.
   for (int i = 0; i < peerCount; i++) {
     if (peers[i].active && peers[i].role == ROLE_LEADER) {
       _beaconUDP.beginPacket(peers[i].ip, BEACON_PORT);
@@ -178,7 +189,6 @@ void discovery_parseBeacon(const char* data, int len) {
   memcpy(buf, data, len); buf[len] = 0;
   if (strncmp(buf, "MINIHEAD|", 9) != 0) return;
 
-  // Beacon fields after "MINIHEAD|": MAC|IP|fixID|ROLE|NAME|MODE|PRIORITY
   char* fields[8]; int fi = 0;
   char* tok = strtok(buf + 9, "|");
   while (tok && fi < 8) { fields[fi++] = tok; tok = strtok(nullptr, "|"); }
@@ -189,15 +199,15 @@ void discovery_parseBeacon(const char* data, int len) {
   int         fixID    = atoi(fields[2]);
   NodeRole    role     = (strcmp(fields[3], "LEADER") == 0) ? ROLE_LEADER : ROLE_FOLLOWER;
   const char* name     = (fi >= 5) ? fields[4] : "";
-  const char* mode     = (fi >= 6) ? fields[5] : "";
+  const char* mode     = (fi >= 6) ? fields[5] : "UDP";
   int         priority = (fi >= 7) ? atoi(fields[6]) : 100;  // default 100 = ESP
 
   if (strcmp(mac, ownMAC) == 0) return;
 
-  discovery_addOrUpdate(mac, ip, fixID, role, name, priority);
+  discovery_addOrUpdate(mac, ip, fixID, role, name, mode, priority);
   if (logCfg.discoveryBeacons)
-    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"  mode:%s  pri:%d\n",
-                  mac, ip, fixID, fields[3], name, mode, priority);
+    Serial.printf("[Discovery] Heard: %s  IP:%s  Fix#%d  %s  \"%s\"  pri:%d\n",
+                  mac, ip, fixID, fields[3], name, priority);
 
   // Re-elect any time we see a peer that could beat us — don't wait for them
   // to claim LEADER; they may still be in their boot listen phase.
@@ -228,67 +238,96 @@ void discovery_setup() {
     sled_peerListen(millis());
     delay(10);
   }
-
-  { unsigned long electionEnd = millis() + 600;
-    while (millis() < electionEnd) { sled_peerElection(millis()); delay(10); } }
+  sled_peerElection(millis());
 
   discovery_elect();
   _electionDone = true;
-  sled_roleConfirmed();
 
-  strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
+  { IPAddress _lip = WiFi.localIP(); snprintf(ownIP, sizeof(ownIP), "%d.%d.%d.%d", _lip[0], _lip[1], _lip[2], _lip[3]); }
   discovery_sendBeacon();
   _lastBeaconSent = millis();
 }
 
 void discovery_loop() {
+  // Packet reception — every tick, must not be rate-limited.
   int sz = _beaconUDP.parsePacket();
   if (sz > 0) {
     char buf[192]; int n = _beaconUDP.read(buf, sizeof(buf)-1);
     discovery_parseBeacon(buf, n);
   }
 
-  static unsigned long _leaderGoneAt = 0;
-  static bool          _inHold       = false;
-  discovery_pruneStale();
+  // Maintenance — peer table scans run at 1 Hz.
+  // Peer state changes no faster than BEACON_INTERVAL_MS (2 s), so
+  // scanning every loop tick (~1–5 kHz) was pure waste.
+  static unsigned long _lastMaintenance = 0;
+  static unsigned long _leaderGoneAt    = 0;
+  static bool          _inHold          = false;
+  unsigned long now = millis();
+  if (now - _lastMaintenance >= 1000) {
+    _lastMaintenance = now;
+    discovery_pruneStale();
 
-  if (discovery_leaderAlive()) {
-    _leaderGoneAt = 0; _inHold = false;
-  } else if (nodeRole == ROLE_FOLLOWER) {
-    if (_leaderGoneAt == 0) {
-      _leaderGoneAt = millis(); _inHold = true;
-      if (logCfg.discoveryEvents) Serial.println("[Discovery] Leader signal lost — holding...");
-    }
-    if (_inHold && millis() - _leaderGoneAt > HOLD_DURATION_MS) {
-      _inHold = false; _leaderGoneAt = 0;
-      if (logCfg.discoveryEvents) Serial.println("[Discovery] Hold expired — re-electing...");
-      discovery_elect();
-    }
-  }
-
-  // Safety net: if we think we're LEADER but an active peer would beat us,
-  // yield immediately — catches missed beacons and boot-phase FOLLOWER ads.
-  if (nodeRole == ROLE_LEADER) {
-    for (int i = 0; i < peerCount; i++) {
-      if (peers[i].active && _betterCandidate(peers[i].priority, peers[i].mac, 100, ownMAC)) {
-        if (logCfg.discoveryEvents)
-          Serial.printf("[Discovery] Better candidate %s (priority %d) active — yielding\n",
-                        peers[i].mac, peers[i].priority);
-        discovery_elect();
-        break;
+#ifdef PLUGIN_ARTNET
+    {
+      static bool _hadLeader = false;
+      bool leaderNow = discovery_leaderAlive();
+      if (leaderNow && !_hadLeader) {
+        for (int i = 0; i < peerCount; i++) {
+          if (peers[i].active && peers[i].role == ROLE_LEADER) {
+            Serial.printf("[Discovery] PC Leader connected: %s  IP:%s\n", peers[i].mac, peers[i].ip);
+            break;
+          }
+        }
+        _hadLeader = true;
+      } else if (!leaderNow && _hadLeader) {
+        Serial.println("[Discovery] PC Leader lost");
+        _hadLeader = false;
       }
     }
-  }
+#endif
 
-  unsigned long now = millis();
+#ifndef PLUGIN_ARTNET
+    // Art-Net followers are permanently FOLLOWER — PC App is always the leader.
+    // Skip hold/re-elect entirely: there is no recovery action an ARTNET ESP can
+    // take, and the cycle just floods the serial log every 10 s.
+    if (discovery_leaderAlive()) {
+      _leaderGoneAt = 0; _inHold = false;
+    } else if (nodeRole == ROLE_FOLLOWER) {
+      if (_leaderGoneAt == 0) {
+        _leaderGoneAt = now; _inHold = true;
+        if (logCfg.discoveryEvents) Serial.println("[Discovery] Leader signal lost — holding...");
+      }
+      if (_inHold && now - _leaderGoneAt > HOLD_DURATION_MS) {
+        _inHold = false; _leaderGoneAt = 0;
+        if (logCfg.discoveryEvents) Serial.println("[Discovery] Hold expired — re-electing...");
+        discovery_elect();
+      }
+    }
+
+    // Safety net: if we think we're LEADER but an active peer would beat us,
+    // yield immediately — catches missed beacons and boot-phase FOLLOWER ads.
+    if (nodeRole == ROLE_LEADER) {
+      for (int i = 0; i < peerCount; i++) {
+        if (peers[i].active && _betterCandidate(peers[i].priority, peers[i].mac, 100, ownMAC)) {
+          if (logCfg.discoveryEvents)
+            Serial.printf("[Discovery] Better candidate %s (priority %d) active — yielding\n",
+                          peers[i].mac, peers[i].priority);
+          discovery_elect();
+          break;
+        }
+      }
+    }
+#endif  // !PLUGIN_ARTNET
+  }  // end 1 Hz maintenance
+
   if (now - _lastBeaconSent >= BEACON_INTERVAL_MS) {
-    strncpy(ownIP, WiFi.localIP().toString().c_str(), 15);
+    IPAddress _lip = WiFi.localIP();
+    snprintf(ownIP, sizeof(ownIP), "%d.%d.%d.%d", _lip[0], _lip[1], _lip[2], _lip[3]);
     discovery_sendBeacon();
     _lastBeaconSent = now;
   }
 
-  if (nodeRole == ROLE_LEADER && _webServerStarted)
-    wifi_control_loop();
+  // wifi_control_loop() is called by the wifi plugin's loop()
 }
 
-REGISTER_PLUGIN(discovery);
+// lifecycle called by udp_control.h

@@ -7,19 +7,22 @@
 // ─────────────────────────────────────────────────────────────────
 
 void handleRoot(AsyncWebServerRequest* req) {
-#ifdef PLUGIN_ARTNET
-  // Art-Net mode: redirect browsers to the PC App instead of serving the UI.
-  // Use 127.0.0.1 when the browser is on the same machine as the Art-Net sender.
-  String target = "http://127.0.0.1:8080";
-  if (artnetSenderIP.length() > 0) {
-    String clientIP = req->client()->remoteIP().toString();
-    target = (clientIP == artnetSenderIP)
-             ? "http://127.0.0.1:8080"
-             : "http://" + artnetSenderIP + ":8080";
+  // Art-Net mode: redirect browsers to the PC App instead of serving the UI —
+  // unless ?settings=1 is passed, which is the escape hatch to reach the
+  // Network Mode / Saved Networks / AP Settings panels to switch back out
+  // of Art-Net mode (the PC App has no UI for that).
+  if (networkMode == MODE_ARTNET && !req->hasParam("settings")) {
+    // Use 127.0.0.1 when the browser is on the same machine as the Art-Net sender.
+    String target = "http://127.0.0.1:8080";
+    if (artnetSenderIP.length() > 0) {
+      String clientIP = req->client()->remoteIP().toString();
+      target = (clientIP == artnetSenderIP)
+               ? "http://127.0.0.1:8080"
+               : "http://" + artnetSenderIP + ":8080";
+    }
+    req->redirect(target);
+    return;
   }
-  req->redirect(target);
-  return;
-#endif
   if (!requireLeader(req)) return;
   sendHtmlProgmem(req, INDEX_HTML);
 }

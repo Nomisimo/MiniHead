@@ -69,12 +69,14 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 // A device that DOES have known credentials but can't reach any of
 // them (wrong password, moved to a new venue, router down) instead
 // waits AP_FALLBACK_MAX_CYCLES cycles (~20-25s each) before giving up
-// and offering AP mode too — long enough to ride out a brief outage
-// without a live fleet device dropping out, but not forever, so it's
-// still reachable to fix via the Saved Networks panel instead of a
-// USB reflash.
+// and offering AP mode too. Kept low (2) so a device is reachable to
+// fix via the Saved Networks panel quickly instead of a USB reflash —
+// trade-off: a live fleet device that loses WiFi for under a minute
+// will also drop into AP mode instead of riding out the blip. Raise
+// this if a live show dropping out on a brief outage is worse than
+// waiting longer to recover a genuinely misconfigured device.
 #ifndef AP_FALLBACK_MAX_CYCLES
-#define AP_FALLBACK_MAX_CYCLES 8
+#define AP_FALLBACK_MAX_CYCLES 2
 #endif
 
 // ── Saved WiFi networks (added via the web UI) ────────────────────

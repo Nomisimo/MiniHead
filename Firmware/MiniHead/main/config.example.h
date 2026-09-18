@@ -62,6 +62,21 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #define WIFI_WATCHDOG_MISSES 3
 #endif
 
+// ── AP fallback patience ───────────────────────────────────────────
+// A device with ZERO known networks (fresh out of the box) falls back
+// to AP mode almost immediately (2 retry cycles) — there's nothing to
+// lose by offering the setup hotspot right away.
+// A device that DOES have known credentials but can't reach any of
+// them (wrong password, moved to a new venue, router down) instead
+// waits AP_FALLBACK_MAX_CYCLES cycles (~20-25s each) before giving up
+// and offering AP mode too — long enough to ride out a brief outage
+// without a live fleet device dropping out, but not forever, so it's
+// still reachable to fix via the Saved Networks panel instead of a
+// USB reflash.
+#ifndef AP_FALLBACK_MAX_CYCLES
+#define AP_FALLBACK_MAX_CYCLES 8
+#endif
+
 // ── Saved WiFi networks (added via the web UI) ────────────────────
 // Networks added through the device's own web UI (Saved Networks
 // panel) are stored as JSON on LittleFS (/wifi_networks.json), not

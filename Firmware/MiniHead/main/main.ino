@@ -190,12 +190,14 @@ static void wifi_connectMulti() {
 
     failCycles++;
 
-    // AP fallback only when we have literally no known network to try at
-    // all — a genuinely fresh device with nothing to reconnect to. A device
-    // that DOES have known credentials (fleet or Art-Net) keeps retrying
-    // instead of dropping out of the fleet into an isolated hotspot on a
-    // transient WiFi outage; the runtime mode doesn't matter for this.
-    if (runtimeCount == 0 && failCycles >= 2) {
+    // AP fallback: fast (2 cycles) when we have zero known networks at all
+    // (fresh device, nothing to lose); patient (AP_FALLBACK_MAX_CYCLES) when
+    // we DO have credentials but none of them ever connect — long enough to
+    // ride out a brief outage without a live fleet device dropping out, but
+    // not forever, so a stale/wrong config is still fixable via the Saved
+    // Networks panel instead of a USB reflash.
+    int apFallbackAt = (runtimeCount == 0) ? 2 : AP_FALLBACK_MAX_CYCLES;
+    if (failCycles >= apFallbackAt) {
       wifi_startAPMode();
       return;   // proceed with setup() in AP mode
     }

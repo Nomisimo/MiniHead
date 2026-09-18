@@ -10,18 +10,25 @@
 #pragma once
 
 // ── Feature flags ─────────────────────────────────────────────────
-// To disable a plugin: comment out its #define — the #include and
-// stubs are handled automatically by the #ifdef blocks below.
-// MUST be defined BEFORE the plugin #includes so that wifi_control.h
-// and discovery.h can read them at compile time.
-
-//#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
+// To disable PLUGIN_STARTUP_ANIMATION/PLUGIN_DEBUGGER: comment out its
+// #define — the #include is handled automatically by the #ifdef
+// blocks below. MUST be defined BEFORE the plugin #includes so those
+// files can read them at compile time.
+//
+// PLUGIN_UDP_CONTROL and PLUGIN_ARTNET are NOT toggled here anymore —
+// both are always compiled in, and which one is ACTIVE is chosen at
+// runtime via the Network Mode panel in the web UI (persisted to
+// /network_mode.json, applied on reboot). Running both at once used
+// to overload the ESP32-C3's single core; now only one mode's logic
+// actually runs, the other's code just sits inert in flash.
 #define PLUGIN_UDP_CONTROL
 #define PLUGIN_ARTNET
+//#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
 //#define PLUGIN_DEBUGGER
 
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
+#include "core/device_mode.h"      // runtime Network Mode (UDP vs Art-Net) — must load before wifi.h
 
 // ── WiFi network list ─────────────────────────────────────────────
 // Add all known networks. The ESP tries the last-connected first,
@@ -96,22 +103,9 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #include "plugins/startup_animation/startup_animation.h"
 #endif
 #include "core/wifi/wifi.h"               // HTTP server, cues, sequencer
-
-#ifdef PLUGIN_UDP_CONTROL
-#include "core/udp/udp_control.h"  // discovery + leader election + UDP commands
-#endif
-
-#ifdef PLUGIN_ARTNET
-#include "plugins/artnet/artnet.h"                // Art-Net / DMX512 receiver — port 6454
-#endif
+#include "core/udp/udp_control.h"         // discovery + leader election + UDP commands (active only in UDP mode)
+#include "plugins/artnet/artnet.h"        // Art-Net / DMX512 receiver — port 6454 (active only in Art-Net mode)
 
 #ifdef PLUGIN_DEBUGGER
 #include "plugins/debugger/debugger.h"            // log config UI + loop timing profiler
-#endif
-
-// ── Stubs ─────────────────────────────────────────────────────────
-// When a plugin is disabled its symbols must still resolve at link time.
-
-#ifndef PLUGIN_UDP_CONTROL
-#include "core/wifi/discovery_stubs.h"
 #endif

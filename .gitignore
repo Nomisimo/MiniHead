@@ -31,3 +31,7 @@ PC App/data/
 # AI assistant local files
 .claude/
 .claire/
+CLAUDE.md
+
+# Build artifacts
+*.zip

@@ -10,8 +10,8 @@
 |---|---|
 | Microcontroller | ESP32-C3 Super Mini |
 | LED | WS2812B RGBW (1 pixel) |
-| Pan servo | SG90 |
-| Tilt servo | SG90 |
+| Pan servo | TS90MD |
+| Tilt servo | TS90MD |
 
 ---
 

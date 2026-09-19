@@ -54,6 +54,14 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #define WIFI_WATCHDOG_MISSES 3
 #endif
 
+// ── Saved WiFi networks (added via the web UI) ────────────────────
+// Networks added through the device's own web UI (Saved Networks
+// panel) are stored as JSON on LittleFS (/wifi_networks.json), not
+// here — this only caps how many can be saved at once.
+#ifndef MAX_SAVED_NETWORKS
+#define MAX_SAVED_NETWORKS 10
+#endif
+
 // ── Cue / sequencer limits ────────────────────────────────────────
 #ifndef MAX_CUES
 #define MAX_CUES    32

@@ -139,6 +139,28 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       </div>
       <div id="ap-pw-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
     </div>
+    <!-- Saved WiFi Networks — add/remove networks without reflashing -->
+    <div class="panel" id="wifi-networks-panel" style="border-bottom:1px solid var(--border)">
+      <div class="panel-title">// Saved Networks</div>
+      <div id="wnList" style="margin-bottom:8px;"></div>
+      <div class="motion-row" style="margin-bottom:6px;">
+        <div class="motion-label" style="font-size:10px;min-width:72px;">SSID</div>
+        <input type="text" id="wnSsidInput" placeholder="Network name" maxlength="32"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
+      </div>
+      <div class="motion-row" style="margin-bottom:8px;">
+        <div class="motion-label" style="font-size:10px;min-width:72px;">PASSWORD</div>
+        <input type="password" id="wnPwInput" placeholder="min. 8 chars (empty = open)" maxlength="64"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn primary" style="flex:1;" onclick="wnAdd()">ADD NETWORK</button>
+        <button class="btn" onclick="wnReboot()" style="color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">REBOOT</button>
+      </div>
+      <div id="wn-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
+    </div>
     <div class="panel" id="debugger-module-container">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Debugger...</div>
     </div>
@@ -325,8 +347,51 @@ function apSetPassword(){
     }).catch(function(){toast('No response','err');});
 }
 function apClearPassword(){ document.getElementById('apPwInput').value=''; apSetPassword(); }
+function wnLoad(){fetch('/api/wifi/networks').then(function(r){return r.json();}).then(wnRender).catch(function(){});}
+function wnRender(list){
+  var box=document.getElementById('wnList');
+  box.innerHTML='';
+  if(!list||!list.length){
+    box.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px 0;">No saved networks</div>';
+    return;
+  }
+  list.forEach(function(n){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-family:var(--mono);font-size:12px;';
+    var label=document.createElement('span');
+    label.textContent=n.ssid;
+    var del=document.createElement('button');
+    del.className='icon-btn del';
+    del.textContent='X';
+    del.title='Remove';
+    del.addEventListener('click',function(){wnDelete(n.ssid);});
+    row.appendChild(label);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+function wnAdd(){
+  var ssidEl=document.getElementById('wnSsidInput'),pwEl=document.getElementById('wnPwInput');
+  var ssid=ssidEl.value.trim(),pw=pwEl.value;
+  if(!ssid){toast('Enter an SSID','err');return;}
+  if(pw.length>0&&pw.length<8){toast('Min. 8 characters (or empty for open)','err');return;}
+  fetch('/api/wifi/networks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid,pass:pw})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){ssidEl.value='';pwEl.value='';toast('Network saved');wnLoad();}
+      else{toast(d.message||'Error','err');}
+    }).catch(function(){toast('No response','err');});
+}
+function wnDelete(ssid){
+  fetch('/api/wifi/networks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid})})
+    .then(function(){toast('Network removed');wnLoad();}).catch(function(){toast('No response','err');});
+}
+function wnReboot(){
+  document.getElementById('wn-status').textContent='Rebooting…';
+  fetch('/api/reboot',{method:'POST'}).catch(function(){});
+  toast('Rebooting…');
+}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
-updatePreview();loadCues();
+updatePreview();loadCues();wnLoad();
 // Load network heads plugin
 function loadModule(url, id) {
   fetch(url).then(function(r){

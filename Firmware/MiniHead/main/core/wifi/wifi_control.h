@@ -53,6 +53,7 @@ bool apPasswordSet = false;           // true when AP has a password ≥8 chars
 #include "wifi_api.h"       // handleRoot/Status/Send/Rainbow/Blackout/APPassword…
 #include "wifi_cues.h"      // Cue struct, storage, cue+seq handlers, wifi_cues_loop
 #include "wifi_heads.h"     // handleGetHeads/Fixtures, handleSetName/FixID (async), handleIdentify
+#include "wifi_networks.h"  // saved network CRUD + reboot (Saved Networks panel)
 
 // ── Config routes (always active — no requireLeader() guard) ─────
 // Called by both setupRoutes() and wifi_control_setup() in ARTNET mode.
@@ -94,6 +95,16 @@ void setupConfigRoutes() {
       sendJson(req, 200, "{\"status\":\"ok\"}");
     });
 #endif
+
+  // Saved WiFi networks — Saved Networks panel (add/remove without reflashing)
+  server.on("/api/wifi/networks", HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetWifiNetworks(r); });
+  server.on("/api/wifi/networks", HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleAddWifiNetwork(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/wifi/networks", HTTP_DELETE,
+    [](AsyncWebServerRequest* r){ handleDeleteWifiNetwork(r); },
+    nullptr, _bodyAccumulator);
+  server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest* r){ handleReboot(r); });
 }
 
 // ── Route setup ───────────────────────────────────────────────────
@@ -249,6 +260,10 @@ void wifi_control_promote() {
 }
 
 void wifi_control_loop() {
+  if (_wifiRebootAt && millis() > _wifiRebootAt) {
+    Serial.println("[WiFi] Rebooting (requested via web UI)...");
+    ESP.restart();
+  }
   if (!_serverActive) return;
   wifi_cues_loop();
 }

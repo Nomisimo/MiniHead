@@ -53,7 +53,8 @@ bool apPasswordSet = false;           // true when AP has a password ≥8 chars
 #include "wifi_api.h"       // handleRoot/Status/Send/Rainbow/Blackout/APPassword…
 #include "wifi_cues.h"      // Cue struct, storage, cue+seq handlers, wifi_cues_loop
 #include "wifi_heads.h"     // handleGetHeads/Fixtures, handleSetName/FixID (async), handleIdentify
-#include "wifi_networks.h"  // saved network CRUD + reboot (Saved Networks panel)
+#include "wifi_networks.h"       // saved network CRUD + reboot (Saved Networks panel)
+#include "device_mode_routes.h"  // GET/POST /api/mode (Network Mode panel)
 
 // ── Config routes (always active — no requireLeader() guard) ─────
 // Called by both setupRoutes() and wifi_control_setup() in ARTNET mode.
@@ -105,6 +106,12 @@ void setupConfigRoutes() {
     [](AsyncWebServerRequest* r){ handleDeleteWifiNetwork(r); },
     nullptr, _bodyAccumulator);
   server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest* r){ handleReboot(r); });
+
+  // Network Mode — Network Mode panel (switch UDP/Art-Net without reflashing)
+  server.on("/api/mode", HTTP_GET,  [](AsyncWebServerRequest* r){ handleGetMode(r); });
+  server.on("/api/mode", HTTP_POST,
+    [](AsyncWebServerRequest* r){ handleSetMode(r); },
+    nullptr, _bodyAccumulator);
 }
 
 // ── Route setup ───────────────────────────────────────────────────
@@ -208,14 +215,14 @@ void setupRoutes() {
 // ── Lifecycle ─────────────────────────────────────────────────────
 
 void wifi_control_setup() {
-#ifdef PLUGIN_ARTNET
-  _serverActive = true;
-  logcfg_load();
-  setupRoutes();
-  if (!_serverStarted) { server.begin(); _serverStarted = true; }
-  Serial.println("[WiFi] Art-Net mode — full HTTP server :80");
-  return;
-#endif
+  if (networkMode == MODE_ARTNET) {
+    _serverActive = true;
+    logcfg_load();
+    setupRoutes();
+    if (!_serverStarted) { server.begin(); _serverStarted = true; }
+    Serial.println("[WiFi] Art-Net mode — full HTTP server :80");
+    return;
+  }
   _serverActive = true;
   logcfg_load();
   loadCuesFromFlash();
@@ -250,9 +257,7 @@ void wifi_control_setup_follower() {
 }
 
 void wifi_control_promote() {
-#ifdef PLUGIN_ARTNET
-  return;  // Art-Net mode: PC App is always leader
-#endif
+  if (networkMode == MODE_ARTNET) return;  // Art-Net mode: PC App is always leader
   _serverActive = true;
   logcfg_load();
   loadCuesFromFlash();

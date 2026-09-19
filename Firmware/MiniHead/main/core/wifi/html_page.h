@@ -118,6 +118,15 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   <!-- Modules: Network Heads + Art-Net Patch + Debugger -->
   <div class="area-future" style="background:var(--bg)">
+    <!-- Network Mode — switch between Standalone/UDP fleet control and Art-Net without reflashing -->
+    <div class="panel" id="network-mode-panel" style="border-bottom:1px solid var(--border)">
+      <div class="panel-title">// Network Mode</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button class="btn" id="modeUdpBtn" style="flex:1;" onclick="nmSelect('udp')">STANDALONE / UDP</button>
+        <button class="btn" id="modeArtnetBtn" style="flex:1;" onclick="nmSelect('artnet')">ART-NET</button>
+      </div>
+      <div id="nm-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);min-height:14px;"></div>
+    </div>
     <div class="panel" id="module-container" style="border-bottom:1px solid var(--border)">
       <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
     </div>
@@ -390,8 +399,26 @@ function wnReboot(){
   fetch('/api/reboot',{method:'POST'}).catch(function(){});
   toast('Rebooting…');
 }
+var _currentNetworkMode=null;
+function nmLoad(){
+  fetch('/api/mode').then(function(r){return r.json();}).then(function(d){
+    _currentNetworkMode=d.mode;
+    document.getElementById('modeUdpBtn').classList.toggle('active',d.mode==='udp');
+    document.getElementById('modeArtnetBtn').classList.toggle('active',d.mode==='artnet');
+    document.getElementById('nm-status').textContent='Active: '+(d.mode==='artnet'?'Art-Net':'Standalone / UDP');
+  }).catch(function(){});
+}
+function nmSelect(mode){
+  if(mode===_currentNetworkMode){toast('Already in that mode');return;}
+  document.getElementById('nm-status').textContent='Switching… rebooting';
+  fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.status==='ok'){toast('Mode set to '+mode+' — rebooting…');}
+      else{toast(d.message||'Error','err');nmLoad();}
+    }).catch(function(){toast('No response','err');nmLoad();});
+}
 document.getElementById('cmdInput').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw();});
-updatePreview();loadCues();wnLoad();
+updatePreview();loadCues();wnLoad();nmLoad();
 // Load network heads plugin
 function loadModule(url, id) {
   fetch(url).then(function(r){

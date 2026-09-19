@@ -190,14 +190,17 @@ static void wifi_connectMulti() {
 
     failCycles++;
 
-    // AP fallback only in Standalone mode (no UDP, no Art-Net).
-    // UDP and Art-Net devices must stay on the network — they keep retrying.
-#if !defined(PLUGIN_UDP_CONTROL) && !defined(PLUGIN_ARTNET)
-    if (failCycles >= 2) {
+    // AP fallback: fast (2 cycles) when we have zero known networks at all
+    // (fresh device, nothing to lose); patient (AP_FALLBACK_MAX_CYCLES) when
+    // we DO have credentials but none of them ever connect — long enough to
+    // ride out a brief outage without a live fleet device dropping out, but
+    // not forever, so a stale/wrong config is still fixable via the Saved
+    // Networks panel instead of a USB reflash.
+    int apFallbackAt = (runtimeCount == 0) ? 2 : AP_FALLBACK_MAX_CYCLES;
+    if (failCycles >= apFallbackAt) {
       wifi_startAPMode();
       return;   // proceed with setup() in AP mode
     }
-#endif
 
     Serial.printf("[WiFi] All networks failed (%d) — retrying...\n", failCycles);
 
@@ -221,6 +224,7 @@ uint8_t deviceMAC[6];  // hardware STA MAC — read once before any WiFi mode ch
 void setup() {
   Serial.begin(115200);
   core_setup();             // mounts LittleFS — must run before wifi_connectMulti
+  deviceMode_load();        // which network mode (UDP/Art-Net) is active this boot
   sled_bootInit();          // orange solid — hardware alive
 
   // Read MAC before any WiFi mode changes — result is stable regardless of

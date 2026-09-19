@@ -10,18 +10,26 @@
 #pragma once
 
 // ── Feature flags ─────────────────────────────────────────────────
-// To disable a plugin: comment out its #define — the #include and
-// stubs are handled automatically by the #ifdef blocks below.
-// MUST be defined BEFORE the plugin #includes so that wifi_control.h
-// and discovery.h can read them at compile time.
-
-//#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
+// To disable PLUGIN_STARTUP_ANIMATION/PLUGIN_DEBUGGER: comment out its
+// #define — the #include is handled automatically by the #ifdef
+// blocks below. MUST be defined BEFORE the plugin #includes so those
+// files can read them at compile time.
+//
+// PLUGIN_UDP_CONTROL and PLUGIN_ARTNET are NOT toggled here anymore —
+// both are always compiled in, and which one is ACTIVE is chosen at
+// runtime via the Network Mode panel in the web UI (persisted to
+// /network_mode.json, applied on reboot). Running both at once used
+// to overload the ESP32-C3's single core; now only one mode's logic
+// actually runs, the other's code just sits inert in flash.
 #define PLUGIN_UDP_CONTROL
 #define PLUGIN_ARTNET
+//#define PLUGIN_STARTUP_ANIMATION  // servo calibration sweep + color test on boot
 //#define PLUGIN_DEBUGGER
 
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
+#include "status_led.h"            // boot-phase status LED — needs setLED from core.h
+#include "core/device_mode.h"      // runtime Network Mode (UDP vs Art-Net) — must load before wifi.h
 
 // ── WiFi network list ─────────────────────────────────────────────
 // Add all known networks. The ESP tries the last-connected first,
@@ -52,6 +60,23 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #endif
 #ifndef WIFI_WATCHDOG_MISSES
 #define WIFI_WATCHDOG_MISSES 3
+#endif
+
+// ── AP fallback patience ───────────────────────────────────────────
+// A device with ZERO known networks (fresh out of the box) falls back
+// to AP mode almost immediately (2 retry cycles) — there's nothing to
+// lose by offering the setup hotspot right away.
+// A device that DOES have known credentials but can't reach any of
+// them (wrong password, moved to a new venue, router down) instead
+// waits AP_FALLBACK_MAX_CYCLES cycles (~20-25s each) before giving up
+// and offering AP mode too. Kept low (2) so a device is reachable to
+// fix via the Saved Networks panel quickly instead of a USB reflash —
+// trade-off: a live fleet device that loses WiFi for under a minute
+// will also drop into AP mode instead of riding out the blip. Raise
+// this if a live show dropping out on a brief outage is worse than
+// waiting longer to recover a genuinely misconfigured device.
+#ifndef AP_FALLBACK_MAX_CYCLES
+#define AP_FALLBACK_MAX_CYCLES 2
 #endif
 
 // ── Saved WiFi networks (added via the web UI) ────────────────────
@@ -96,22 +121,9 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #include "plugins/startup_animation/startup_animation.h"
 #endif
 #include "core/wifi/wifi.h"               // HTTP server, cues, sequencer
-
-#ifdef PLUGIN_UDP_CONTROL
-#include "core/udp/udp_control.h"  // discovery + leader election + UDP commands
-#endif
-
-#ifdef PLUGIN_ARTNET
-#include "plugins/artnet/artnet.h"                // Art-Net / DMX512 receiver — port 6454
-#endif
+#include "core/udp/udp_control.h"         // discovery + leader election + UDP commands (active only in UDP mode)
+#include "plugins/artnet/artnet.h"        // Art-Net / DMX512 receiver — port 6454 (active only in Art-Net mode)
 
 #ifdef PLUGIN_DEBUGGER
 #include "plugins/debugger/debugger.h"            // log config UI + loop timing profiler
-#endif
-
-// ── Stubs ─────────────────────────────────────────────────────────
-// When a plugin is disabled its symbols must still resolve at link time.
-
-#ifndef PLUGIN_UDP_CONTROL
-#include "core/wifi/discovery_stubs.h"
 #endif

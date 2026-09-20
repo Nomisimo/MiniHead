@@ -16,6 +16,10 @@
 # Firmware credentials — copy config.example.h → config.h and fill in your own
 Firmware/**/config.h
 
+# PWA LittleFS data — populated by deploy.sh in the App repo (not source)
+Firmware/MiniHead/main/data/pwa/*
+!Firmware/MiniHead/main/data/pwa/.gitkeep
+
 # PyInstaller build artifacts
 PC App/build/
 PC App/dist/

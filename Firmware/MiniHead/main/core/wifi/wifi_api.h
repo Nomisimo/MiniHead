@@ -7,6 +7,14 @@
 // ─────────────────────────────────────────────────────────────────
 
 void handleRoot(AsyncWebServerRequest* req) {
+#ifdef PLUGIN_PWA
+  if (LittleFS.exists("/pwa/index.html")) {
+    AsyncWebServerResponse* res = req->beginResponse(LittleFS, "/pwa/index.html", "text/html");
+    res->addHeader("Cache-Control", "no-cache");
+    req->send(res);
+    return;
+  }
+#endif
 #ifdef PLUGIN_ARTNET
   // Art-Net mode: redirect browsers to the PC App instead of serving the UI.
   // Use 127.0.0.1 when the browser is on the same machine as the Art-Net sender.

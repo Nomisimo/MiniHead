@@ -19,6 +19,7 @@
 #define PLUGIN_UDP_CONTROL
 #define PLUGIN_ARTNET
 //#define PLUGIN_DEBUGGER
+//#define PLUGIN_PWA                // serve MiniHead PWA from LittleFS (run deploy.sh first)
 
 // ── Core (always included — hardware drivers, not a plugin) ───────
 #include "core.h"
@@ -107,6 +108,10 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 
 #ifdef PLUGIN_DEBUGGER
 #include "plugins/debugger/debugger.h"            // log config UI + loop timing profiler
+#endif
+
+#ifdef PLUGIN_PWA
+#include "plugins/pwa/pwa.h"                      // serve MiniHead PWA from LittleFS
 #endif
 
 // ── Stubs ─────────────────────────────────────────────────────────

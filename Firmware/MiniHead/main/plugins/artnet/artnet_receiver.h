@@ -15,8 +15,8 @@
 #include <WiFiUdp.h>
 #include "artnet_globals.h"
 #include "../../core.h"
-#include "../wifi/log_config.h"
-#include "../wifi/discovery_globals.h"
+#include "../../core/wifi/log_config.h"
+#include "../../core/wifi/discovery_globals.h"
 #include "../../storage.h"
 
 // ── Global definitions ────────────────────────────────────────────

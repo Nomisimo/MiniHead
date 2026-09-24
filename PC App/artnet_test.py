@@ -197,30 +197,43 @@ def cmd_center():
 # ── Sender thread ─────────────────────────────────────────────────
 HEARTBEAT_INTERVAL = 1.0   # send keep-alive every 1s even if nothing changed
 
-def sender():
-    global pkt_count, demo_t, dmx_last_sent
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
-    # Bind to the correct outgoing interface.  On macOS with VPN or Docker
-    # the unbound socket may route UDP through a tunnel — Wireshark then shows
-    # nothing on the LAN even though sendto() returns no error.
-    bind_ip = BIND_IP or get_local_ip_for(TARGET_IP)
+def _make_sender_sock(dst_ip: str) -> socket.socket:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    # Bind to the correct outgoing interface so packets leave on the LAN adapter
+    # even when a VPN or Docker bridge is active.  Recomputed whenever dst_ip changes.
+    bind_ip = BIND_IP or get_local_ip_for(dst_ip)
     if bind_ip:
         try:
-            sock.bind((bind_ip, 0))
-        except Exception as e:
-            pass   # non-fatal — OS picks interface
+            s.bind((bind_ip, 0))
+        except Exception:
+            pass  # non-fatal — OS picks interface
+    return s
 
-    tick        = 1.0 / SEND_RATE   # target period (44 Hz → ~22.7 ms)
+def sender():
+    global pkt_count, demo_t, dmx_last_sent
+
+    cur_ip  = target["ip"]
+    sock    = _make_sender_sock(cur_ip)
+    fails   = 0
+
+    tick        = 1.0 / SEND_RATE
     prev_t      = time.time()
     last_sent_t = 0.0
-    deadline    = prev_t + tick      # deadline-based timing — no drift accumulation
+    deadline    = prev_t + tick
 
     while running:
         t0 = time.time()
         dt = t0 - prev_t
         prev_t = t0
+
+        # Recreate socket when target IP changes (browser UI update)
+        new_ip = target["ip"]
+        if new_ip != cur_ip:
+            sock.close()
+            cur_ip = new_ip
+            sock   = _make_sender_sock(cur_ip)
+            fails  = 0
 
         # Advance animations
         with mode_lock:
@@ -240,23 +253,29 @@ def sender():
         if changed or heartbeat:
             global last_send_reason
             last_send_reason = "change" if changed else "heartbeat"
-            uni = target["universe"]
-            pkt = build_artdmx(uni, payload)
+            pkt = build_artdmx(target["universe"], payload)
             try:
-                sock.sendto(pkt, (target["ip"], ARTNET_PORT))
-                pkt_count  += 1
-                dmx_last_sent = payload
-                last_sent_t   = t0
+                sock.sendto(pkt, (cur_ip, ARTNET_PORT))
+                pkt_count     += 1
+                dmx_last_sent  = payload
+                last_sent_t    = t0
+                fails          = 0
             except Exception as e:
-                pass   # sendto rarely fails on UDP; errors show as pkt_count stalling
+                fails += 1
+                if fails == 1 or fails % SEND_RATE == 0:
+                    print(f"\r[ArtNet] sendto {cur_ip} failed: {e}  (#{fails})   ", flush=True)
+                if fails >= SEND_RATE:   # after ~1s of failures recreate socket
+                    sock.close()
+                    sock  = _make_sender_sock(cur_ip)
+                    fails = 0
 
-        # Deadline-based sleep: catch up if we overslept, never accumulate lag
+        # Deadline-based sleep — no drift accumulation
         deadline += tick
         now = time.time()
         if deadline > now:
             time.sleep(deadline - now)
         else:
-            deadline = now  # fell behind — reset, don't try to catch up
+            deadline = now
     sock.close()
 
 # ── Flask app ─────────────────────────────────────────────────────

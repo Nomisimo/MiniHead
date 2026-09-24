@@ -238,8 +238,11 @@ def _make_sender_sock(dst_ip: str) -> socket.socket:
 def sender():
     global pkt_count, demo_t, dmx_last_sent
 
-    cur_ip  = target["ip"]
-    sock    = _make_sender_sock(cur_ip)
+    cur_ip      = target["ip"]
+    sock        = _make_sender_sock(cur_ip)
+    # Separate unbound socket for loopback mirror → feeds the PC App's ArtNet sniffer.
+    # The main sock is bound to the LAN IP and cannot reach 127.0.0.1.
+    loop_sock   = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     fails   = 0
 
     tick        = 1.0 / SEND_RATE
@@ -285,6 +288,9 @@ def sender():
                 dmx_last_sent  = payload
                 last_sent_t    = t0
                 fails          = 0
+                # Mirror to loopback so the PC App's ArtNet sniffer sees the stream.
+                try: loop_sock.sendto(pkt, ("127.0.0.1", ARTNET_PORT))
+                except Exception: pass
             except Exception as e:
                 fails += 1
                 if fails == 1 or fails % SEND_RATE == 0:
@@ -302,6 +308,7 @@ def sender():
         else:
             deadline = now
     sock.close()
+    loop_sock.close()
 
 # ── Flask app ─────────────────────────────────────────────────────
 app = Flask(__name__)

@@ -31,6 +31,7 @@ void artnet_setup() {
 
   // Art-Net API routes
   server.on("/api/artnet/status",     HTTP_GET,    [](AsyncWebServerRequest* r){ handleArtnetStatus(r); });
+  server.on("/api/artnet/test",       HTTP_POST,   [](AsyncWebServerRequest* r){ handleArtnetTest(r); });
   server.on("/api/artnet/patch",      HTTP_GET,    [](AsyncWebServerRequest* r){ handleGetArtnetPatch(r); });
   server.on("/api/artnet/patch",      HTTP_DELETE, [](AsyncWebServerRequest* r){ handleClearAllArtnetPatches(r); });
   server.on("/api/artnet/patch/bulk", HTTP_POST,

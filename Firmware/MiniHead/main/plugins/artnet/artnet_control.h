@@ -169,6 +169,46 @@ void handleBulkArtnetPatch(AsyncWebServerRequest* req) {
   sendJson(req, 200, "{\"status\":\"ok\",\"count\":" + String(count) + "}");
 }
 
+// ── Test endpoint — inject a fake DMX frame directly ─────────────
+// Bypasses UDP so you can verify patch logic without a lighting console.
+// Applies: master=255, R=255, G=0, B=0, W=0, pan=128, tilt=128 (full red, centre).
+void handleArtnetTest(AsyncWebServerRequest* req) {
+  if (artnetPatchCount == 0) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"No patch configured — set universe+startAddr first\"}");
+    return;
+  }
+  uint8_t dmx[DMX_CHANNELS] = {};
+  int base = (int)artnetPatches[0].startAddr - 1;
+  if (base < 0 || base + DMX_FOOTPRINT > DMX_CHANNELS) {
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"startAddr out of range\"}");
+    return;
+  }
+  dmx[base + CH_MASTER] = 255;
+  dmx[base + CH_RED]    = 255;
+  dmx[base + CH_GREEN]  = 0;
+  dmx[base + CH_BLUE]   = 0;
+  dmx[base + CH_WHITE]  = 0;
+  dmx[base + CH_PAN]    = 128;   // ~135°
+  dmx[base + CH_TILT]   = 128;   // ~135°
+
+  // Temporarily clear animations so test values get through
+  bool wasRainbow = rainbowActive, wasDemo = demoActive;
+  rainbowActive = false; demoActive = false;
+  bool matched = artnet_applyOwnPatch(artnetPatches[0].universe, DMX_CHANNELS, dmx);
+  rainbowActive = wasRainbow; demoActive = wasDemo;
+
+  String resp = "{\"status\":\"";
+  resp += matched ? "ok" : "warn";
+  resp += "\",\"matched\":";
+  resp += matched ? "true" : "false";
+  resp += ",\"patch\":{\"universe\":";
+  resp += artnetPatches[0].universe;
+  resp += ",\"startAddr\":";
+  resp += artnetPatches[0].startAddr;
+  resp += "}}";
+  sendJson(req, 200, resp);
+}
+
 // ── Setup (called from wifi_control_setup) ───────────────────────
 void artnet_control_setup() {
   artnet_loadPatches();

@@ -46,4 +46,26 @@ def get_local_ip_for(target: str) -> str:
                 return ip
         except Exception:
             pass
+
+    # Interface scan fallback: parse ifconfig for any IP on the same /24.
+    # Handles hotspot/tethered networks where the route table probe above fails.
+    if not is_broadcast:
+        dst_prefix = ".".join(target.split(".")[:3]) + "."
+        try:
+            out = subprocess.check_output(
+                ["ifconfig"], stderr=subprocess.DEVNULL, timeout=2).decode()
+            for line in out.split("\n"):
+                if "inet " not in line:
+                    continue
+                parts = line.strip().split()
+                try:
+                    idx = parts.index("inet")
+                    candidate = parts[idx + 1]
+                    if candidate.startswith(dst_prefix) and candidate not in ("0.0.0.0", "127.0.0.1"):
+                        return candidate
+                except (ValueError, IndexError):
+                    pass
+        except Exception:
+            pass
+
     return ""

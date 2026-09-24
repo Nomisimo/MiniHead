@@ -1,19 +1,36 @@
 """HTTP client for talking to ESP32 devices."""
+import http.client
 import json
 import logging
-import urllib.request
 from typing import Optional
+from .net_utils import get_local_ip_for
 
 log = logging.getLogger(__name__)
 _TIMEOUT = 3
 
 
+def _request(ip: str, method: str, path: str, body: dict | None = None) -> Optional[bytes]:
+    """Open an HTTP connection bound to the correct local interface."""
+    local_ip = get_local_ip_for(ip)
+    src = (local_ip, 0) if local_ip and local_ip != "127.0.0.1" else None
+    conn = http.client.HTTPConnection(ip, timeout=_TIMEOUT, source_address=src)
+    try:
+        headers: dict = {}
+        data: bytes | None = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        conn.request(method, path, body=data, headers=headers)
+        resp = conn.getresponse()
+        return resp.read()
+    finally:
+        conn.close()
+
+
 def http_get(ip: str, path: str) -> Optional[dict | list]:
     try:
-        resp = urllib.request.urlopen(f"http://{ip}{path}", timeout=_TIMEOUT)
-        data = json.loads(resp.read())
-        resp.close()
-        return data
+        raw = _request(ip, "GET", path)
+        return json.loads(raw) if raw else None
     except Exception as e:
         log.warning("[esp] GET %s%s: %s", ip, path, e)
         return None
@@ -21,13 +38,7 @@ def http_get(ip: str, path: str) -> Optional[dict | list]:
 
 def http_post(ip: str, path: str, body: dict) -> bool:
     try:
-        req = urllib.request.Request(
-            f"http://{ip}{path}",
-            data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=_TIMEOUT).read()
+        _request(ip, "POST", path, body)
         return True
     except Exception as e:
         log.warning("[esp] POST %s%s: %s", ip, path, e)
@@ -36,8 +47,7 @@ def http_post(ip: str, path: str, body: dict) -> bool:
 
 def http_delete(ip: str, path: str) -> bool:
     try:
-        req = urllib.request.Request(f"http://{ip}{path}", method="DELETE")
-        urllib.request.urlopen(req, timeout=_TIMEOUT).read()
+        _request(ip, "DELETE", path)
         return True
     except Exception as e:
         log.warning("[esp] DELETE %s%s: %s", ip, path, e)

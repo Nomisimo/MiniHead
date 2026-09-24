@@ -6,6 +6,7 @@ import logging
 from typing import Callable
 from .. import config
 from ..state.peers import PeerStore
+from .net_utils import get_local_ip_for
 
 log = logging.getLogger(__name__)
 
@@ -13,14 +14,8 @@ OWN_MAC = config.OWN_MAC
 
 
 def _own_ip() -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
+    ip = get_local_ip_for("8.8.8.8")
+    return ip if ip else "127.0.0.1"
 
 
 def own_ip() -> str:
@@ -50,15 +45,29 @@ class BeaconService:
 
     # ── Sender ────────────────────────────────────────────────────────────────
 
+    def _make_sender_sock(self, bind_ip: str) -> socket.socket:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        if bind_ip and bind_ip != "127.0.0.1":
+            try:
+                s.bind((bind_ip, 0))
+            except Exception:
+                pass
+        return s
+
     def _sender(self) -> None:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        cur_ip = _own_ip()
+        sock   = self._make_sender_sock(cur_ip)
         while True:
             try:
-                ip  = _own_ip()
+                ip = _own_ip()
+                if ip != cur_ip:
+                    sock.close()
+                    cur_ip = ip
+                    sock   = self._make_sender_sock(cur_ip)
                 msg = f"MINIHEAD|{OWN_MAC}|{ip}|0|LEADER|PC|PC".encode()
                 sock.sendto(msg, ("255.255.255.255", config.BEACON_PORT))
-                # Unicast to each peer as backup (Fritz!Box blocks WiFi→Ethernet broadcast)
+                # Unicast to each peer as backup (Telekom router blocks WiFi→WiFi broadcast)
                 for peer in self._peers.get_all():
                     if peer.mac != OWN_MAC:
                         try:
@@ -68,6 +77,9 @@ class BeaconService:
                 self._peers.touch(OWN_MAC)
             except Exception as e:
                 log.warning("[beacon_sender] %s", e)
+                sock.close()
+                cur_ip = _own_ip()
+                sock   = self._make_sender_sock(cur_ip)
             time.sleep(config.BEACON_INT)
 
     # ── Receiver ──────────────────────────────────────────────────────────────

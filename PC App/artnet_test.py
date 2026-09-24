@@ -59,18 +59,42 @@ if TARGET_IP in ("255.255.255.255", "<broadcast>"):
 
 # ── Interface detection ────────────────────────────────────────────
 def get_local_ip_for(target_ip: str) -> str:
-    """Return the local IP address the OS would use to reach target_ip.
-    On macOS with active VPN or Docker, this ensures packets leave on the
-    correct LAN interface rather than being swallowed by a tunnel."""
-    probe = "8.8.8.8" if target_ip in ("255.255.255.255", "<broadcast>") else target_ip
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((probe, 1))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return ""
+    """Return the local IP the OS would use to reach target_ip.
+    Tries multiple probes so it works even when the target or internet
+    is temporarily unreachable, and even with multiple network interfaces."""
+    import subprocess, sys as _sys
+    is_broadcast = target_ip in ("255.255.255.255", "<broadcast>")
+
+    # macOS: ask the kernel which interface it would use (most reliable)
+    if _sys.platform == "darwin" and not is_broadcast:
+        try:
+            out = subprocess.check_output(
+                ["route", "-n", "get", target_ip],
+                stderr=subprocess.DEVNULL, timeout=1).decode()
+            iface = next((l.split(":")[-1].strip()
+                          for l in out.splitlines() if "interface:" in l), None)
+            if iface:
+                ip = subprocess.check_output(
+                    ["ipconfig", "getifaddr", iface],
+                    stderr=subprocess.DEVNULL, timeout=1).decode().strip()
+                if ip and ip not in ("0.0.0.0", "127.0.0.1"):
+                    return ip
+        except Exception:
+            pass
+
+    # UDP-connect fallback: no packets sent, just a route-table lookup
+    for probe in ([target_ip] if not is_broadcast else []) + ["8.8.8.8", "1.1.1.1"]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.3)
+            s.connect((probe, 1))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip and ip not in ("0.0.0.0", "127.0.0.1"):
+                return ip
+        except Exception:
+            pass
+    return ""
 
 # ── DMX channel layout (matches firmware footprint) ───────────────
 CH_MASTER = 0

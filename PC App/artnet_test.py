@@ -229,10 +229,13 @@ HEARTBEAT_INTERVAL = 1.0   # send keep-alive every 1s even if nothing changed
 def _make_sender_sock(dst_ip: str) -> socket.socket:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    # Bind to the outgoing LAN interface so packets don't route through a VPN/tunnel.
-    # Use 8.8.8.8 as probe (always reachable via the router) rather than dst_ip,
-    # so binding works even when the ESP is temporarily unreachable.
-    bind_ip = BIND_IP or get_local_ip_for("8.8.8.8") or get_local_ip_for(dst_ip)
+    # For unicast targets probe the DESTINATION so we bind to the LAN interface,
+    # not the internet-facing one (which is what 8.8.8.8 would return on a machine
+    # with both WiFi and Thunderbolt/VPN).
+    # For broadcast there is no specific route entry, so fall back to 8.8.8.8.
+    is_bcast = dst_ip in ("255.255.255.255", "<broadcast>")
+    probe = "8.8.8.8" if is_bcast else dst_ip
+    bind_ip = BIND_IP or get_local_ip_for(probe) or get_local_ip_for("8.8.8.8")
     if bind_ip:
         try:
             s.bind((bind_ip, 0))

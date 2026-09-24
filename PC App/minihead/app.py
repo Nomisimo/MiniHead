@@ -83,6 +83,7 @@ def create_app() -> Flask:
     sniffer.start()
     _start_sequencer_thread(sequencer, cues, peers, fixtures)
     _start_keepalive_thread(peers)
+    _start_artnet_poll_thread(artnet, peers)
 
     return app
 
@@ -105,6 +106,24 @@ def _start_sequencer_thread(sequencer: SequencerEngine, cues, peers, fixtures) -
     t = threading.Thread(target=_run, daemon=True, name="sequencer_runner")
     t.start()
     log.info("[init] thread: sequencer_runner")
+
+
+def _start_artnet_poll_thread(artnet: ArtNetState, peers: PeerStore) -> None:
+    from .network.esp import http_get
+
+    def _run():
+        while True:
+            time.sleep(2.0)
+            for p in peers.get_all():
+                if p.mac == config.OWN_MAC:
+                    continue
+                result = http_get(p.ip, "/api/artnet/status")
+                if isinstance(result, dict) and result.get("active"):
+                    artnet.receive_esp_status(result)
+
+    t = threading.Thread(target=_run, daemon=True, name="artnet_esp_poll")
+    t.start()
+    log.info("[init] thread: artnet_esp_poll")
 
 
 def _start_keepalive_thread(peers: PeerStore) -> None:

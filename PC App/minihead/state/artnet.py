@@ -34,6 +34,21 @@ class ArtNetState:
         with self._lock:
             return self._active
 
+    def receive_esp_status(self, values: dict) -> None:
+        """Update state from an ESP's /api/artnet/status poll (active=True only).
+        Keeps _last_packet fresh so update_active() doesn't time out."""
+        with self._lock:
+            self._last_packet = time.time()
+            self._active = True
+            self._last_values = {
+                "r":    int(values.get("r",    0)),
+                "g":    int(values.get("g",    0)),
+                "b":    int(values.get("b",    0)),
+                "w":    int(values.get("w",    0)),
+                "pan":  int(values.get("pan",  0)),
+                "tilt": int(values.get("tilt", 0)),
+            }
+
     def decode_first_patch(self, patches: list) -> None:
         """Decode DMX values from the first matching patch (display only)."""
         with self._lock:

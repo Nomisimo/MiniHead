@@ -197,7 +197,7 @@ static void artnet_sendPollReply(IPAddress dest) {
     reply[173] = 1;                                    // NumPorts = 1
     reply[174] = 0x80;                                 // PortTypes[0] = DMX output
     reply[182] = 0x80;                                 // GoodOutputA[0] = transmitting
-    reply[186] = sw;                                   // SwIn[0]
+    // reply[186] = SwIn[0] — left at 0 (output-only node has no input ports)
     reply[190] = sw;                                   // SwOut[0]
     reply[194] = 100;                                  // AcnPriority
     reply[200] = 0x00;                                 // Style = StNode
@@ -205,7 +205,7 @@ static void artnet_sendPollReply(IPAddress dest) {
     reply[207] = localIP[0]; reply[208] = localIP[1]; // BindIp[4]
     reply[209] = localIP[2]; reply[210] = localIP[3];
     reply[211] = 1;                                    // BindIndex = 1
-    reply[212] = 0x08;                                 // Status2 = DHCP capable
+    reply[212] = 0x09;                                 // Status2 = DHCP capable (bit3) + DHCP in use (bit0)
 
     _artnetUdp.beginPacket(dest, ARTNET_PORT);
     _artnetUdp.write(reply, 239);

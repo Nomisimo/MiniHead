@@ -44,17 +44,22 @@ ARTNET_PORT = 6454
 SEND_RATE   = 44      # packets/s  (Art-Net spec max ≤44 Hz)
 UI_PORT     = 8765
 
-# ── Broadcast warning ──────────────────────────────────────────────
-# Fritz!Box (and most home routers) do NOT forward UDP broadcasts from
-# Ethernet → WiFi.  If the PC is on Ethernet and the ESP is on WiFi,
-# broadcast packets will never reach the ESP.
-# Always pass the ESP's IP directly:
-#   python3 artnet_test.py 192.168.x.x  <universe>  <startAddr>
+# ── Broadcast guard ────────────────────────────────────────────────
+# Most home/mobile routers (Fritz!Box, Telekom, etc.) do NOT forward
+# WiFi→WiFi UDP broadcasts.  The ESP will receive 0 pkt/s.
+# Always target the ESP's IP directly.
 if TARGET_IP in ("255.255.255.255", "<broadcast>"):
-    print("⚠️  WARNING: target is broadcast (255.255.255.255)")
-    print("   Home routers (Fritz!Box etc.) block UDP broadcasts Ethernet→WiFi.")
-    print("   ArtNet will NOT reach WiFi ESPs — pass the ESP IP directly:")
-    print("   python3 artnet_test.py <ESP_IP> <universe> <startAddr>")
+    print()
+    print("╔══════════════════════════════════════════════════════╗")
+    print("║  ERROR: broadcast target will NOT reach WiFi ESPs   ║")
+    print("║  Home/mobile routers block WiFi→WiFi UDP broadcast. ║")
+    print("║                                                      ║")
+    print("║  Pass the ESP IP directly:                           ║")
+    print("║    python3 artnet_test.py <ESP_IP> <uni> <startAddr> ║")
+    print("║  Example: python3 artnet_test.py 192.168.0.35 0 1   ║")
+    print("╚══════════════════════════════════════════════════════╝")
+    print()
+    print("Continuing anyway (loopback mirror to PC App sniffer will still work).")
     print()
 
 # ── Interface detection ────────────────────────────────────────────

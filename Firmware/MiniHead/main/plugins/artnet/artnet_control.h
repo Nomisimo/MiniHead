@@ -209,7 +209,6 @@ void handleArtnetTest(AsyncWebServerRequest* req) {
   sendJson(req, 200, resp);
 }
 
-// ── Setup (called from wifi_control_setup) ───────────────────────
-void artnet_control_setup() {
-  artnet_loadPatches();
-}
+// ── Setup (called from artnet_setup after artnet_receiver_setup) ─
+// Patches are already loaded by artnet_receiver_setup() — no reload needed.
+void artnet_control_setup() {}

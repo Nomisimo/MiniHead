@@ -165,4 +165,4 @@ void stats_loop() {
   }
 }
 
-REGISTER_PLUGIN(stats)
+REGISTER_PLUGIN(stats);

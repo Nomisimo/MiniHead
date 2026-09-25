@@ -31,6 +31,11 @@ static double _statsLedWMs  = 0.0;
 static float _statsPrevPan  = 135.0f;
 static float _statsPrevTilt = 135.0f;
 
+// ── Delete confirmation state (expires after 30 s) ────────────────
+static bool          _statsDeletePending  = false;
+static unsigned long _statsDeletePendingAt = 0;
+#define STATS_DELETE_TIMEOUT_MS 30000UL
+
 // ── Persistence helpers ───────────────────────────────────────────
 
 static void stats_load() {
@@ -88,10 +93,23 @@ static void handleGetStats(AsyncWebServerRequest* req) {
 
 static void handleDeleteStats(AsyncWebServerRequest* req) {
   String confirm = req->hasParam("confirm") ? req->getParam("confirm")->value() : "";
+
   if (confirm != "DELETE") {
-    sendJson(req, 200, "{\"status\":\"confirm\",\"message\":\"Send DELETE /api/stats?confirm=DELETE to reset all counters\"}");
+    // Step 1 — arm the pending flag and ask for confirmation
+    _statsDeletePending   = true;
+    _statsDeletePendingAt = millis();
+    sendJson(req, 200, "{\"status\":\"confirm\",\"message\":\"Send DELETE /api/stats?confirm=DELETE within 30 s to reset all counters\"}");
     return;
   }
+
+  // Step 2 — only works if step 1 was called first and hasn't expired
+  if (!_statsDeletePending || millis() - _statsDeletePendingAt > STATS_DELETE_TIMEOUT_MS) {
+    _statsDeletePending = false;
+    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Send DELETE /api/stats first to initiate reset\"}");
+    return;
+  }
+
+  _statsDeletePending = false;
   _statsRunMs = _statsPanDeg = _statsTiltDeg = 0.0;
   _statsLedMs = _statsLedRMs = _statsLedGMs = _statsLedBMs = _statsLedWMs = 0.0;
   LittleFS.remove("/stats.json");

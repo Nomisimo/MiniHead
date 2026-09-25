@@ -187,10 +187,16 @@ def hue_to_rgb(hue_deg: float):
     ]
     return vals[i % 6]
 
+def _smooth(s: float) -> float:
+    """Smoothstep: more time at extremes, s in 0..1 → 0..1."""
+    s = max(0.0, min(1.0, s))
+    return s * s * (3.0 - 2.0 * s)
+
 def demo_tick(t: float):
     r, g, b = hue_to_rgb(t * 60)
-    pan  = int(127 + 127 * math.sin(t * 0.5))
-    tilt = int(127 + 100 * math.sin(t * 0.3 + 1.0))
+    # Full 0-255 range with smoothstep ease — actually reaches 0 and 255
+    pan  = int(_smooth(0.5 + 0.5 * math.sin(t * 0.40))        * 255)
+    tilt = int(_smooth(0.5 + 0.5 * math.sin(t * 0.25 + 1.2)) * 255)
     with lock:
         dmx[base()+CH_MASTER] = 255
         dmx[base()+CH_RED]    = r

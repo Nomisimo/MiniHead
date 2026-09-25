@@ -114,6 +114,8 @@ static const int WIFI_NETWORK_COUNT = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWOR
 #include "plugins/pwa/pwa.h"                      // serve MiniHead PWA from LittleFS
 #endif
 
+#include "core/stats/stats.h"                     // runtime counters — always on
+
 // ── Stubs ─────────────────────────────────────────────────────────
 // When a plugin is disabled its symbols must still resolve at link time.
 

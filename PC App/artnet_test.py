@@ -198,24 +198,24 @@ def demo_tick(t: float):
     pan  = int(_smooth(0.5 + 0.5 * math.sin(t * 0.40))        * 255)
     tilt = int(_smooth(0.5 + 0.5 * math.sin(t * 0.25 + 1.2)) * 255)
     with lock:
-        dmx[base()+CH_MASTER] = 255
-        dmx[base()+CH_RED]    = r
-        dmx[base()+CH_GREEN]  = g
-        dmx[base()+CH_BLUE]   = b
-        dmx[base()+CH_WHITE]  = 0
-        dmx[base()+CH_PAN]    = pan
-        dmx[base()+CH_TILT]   = tilt
+        # Master intentionally not touched — user controls brightness via fader
+        dmx[base()+CH_RED]   = r
+        dmx[base()+CH_GREEN] = g
+        dmx[base()+CH_BLUE]  = b
+        dmx[base()+CH_WHITE] = 0
+        dmx[base()+CH_PAN]   = pan
+        dmx[base()+CH_TILT]  = tilt
 
 def rainbow_tick(dt: float):
     global rainbow_hue
     rainbow_hue = (rainbow_hue + dt * 36 * anim_speed) % 360
     r, g, b = hue_to_rgb(rainbow_hue)
     with lock:
-        dmx[base()+CH_MASTER] = 255
-        dmx[base()+CH_RED]    = r
-        dmx[base()+CH_GREEN]  = g
-        dmx[base()+CH_BLUE]   = b
-        dmx[base()+CH_WHITE]  = 0
+        # Master intentionally not touched — user controls brightness via fader
+        dmx[base()+CH_RED]   = r
+        dmx[base()+CH_GREEN] = g
+        dmx[base()+CH_BLUE]  = b
+        dmx[base()+CH_WHITE] = 0
 
 # ── Named commands ────────────────────────────────────────────────
 def cmd_blackout():

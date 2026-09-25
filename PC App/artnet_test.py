@@ -145,6 +145,7 @@ rainbow_mode = False
 mode_lock    = threading.Lock()   # guards demo_mode, rainbow_mode, running
 rainbow_hue  = 0.0
 demo_t       = 0.0
+anim_speed   = 1.0
 running      = True
 lock         = threading.Lock()
 
@@ -201,7 +202,7 @@ def demo_tick(t: float):
 
 def rainbow_tick(dt: float):
     global rainbow_hue
-    rainbow_hue = (rainbow_hue + dt * 36) % 360    # full cycle ~10s — smooth at 44 Hz
+    rainbow_hue = (rainbow_hue + dt * 36 * anim_speed) % 360
     r, g, b = hue_to_rgb(rainbow_hue)
     with lock:
         dmx[base()+CH_MASTER] = 255
@@ -216,7 +217,13 @@ def cmd_blackout():
     with mode_lock:
         demo_mode = rainbow_mode = False
     with lock:
-        for i in range(DMX_FP): dmx[base() + i] = 0
+        b = base()
+        dmx[b+CH_MASTER] = 0
+        dmx[b+CH_RED]    = 0
+        dmx[b+CH_GREEN]  = 0
+        dmx[b+CH_BLUE]   = 0
+        dmx[b+CH_WHITE]  = 0
+        # Pan / Tilt intentionally preserved
 
 def cmd_full():
     global demo_mode, rainbow_mode
@@ -297,7 +304,7 @@ def sender():
         with mode_lock:
             _demo = demo_mode; _rainbow = rainbow_mode
         if _demo:
-            demo_t += dt
+            demo_t += dt * anim_speed
             demo_tick(demo_t)
         elif _rainbow:
             rainbow_tick(dt)
@@ -569,6 +576,14 @@ HTML = r"""<!DOCTYPE html>
       <button class="btn"          onclick="doCmd('center')">⊕ CENTER</button>
       <button class="btn"          id="demoBtn" onclick="toggleDemo()">▶ DEMO</button>
     </div>
+    <div style="margin-top:14px;display:grid;grid-template-columns:54px 1fr 58px;align-items:center;gap:10px;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">SPEED</div>
+      <input type="range" class="horizontal" min="0.1" max="10" step="0.1" value="1"
+        id="fSpeed" oninput="onSpeed(+this.value)">
+      <input type="number" class="num-input" min="0.1" max="10" step="0.1" value="1.0" id="vSpeed"
+        style="color:var(--accent3);" oninput="syncSpeed(+this.value)">
+    </div>
+    <div style="margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--text-dim);text-align:right;" id="speedLabel">1.0×</div>
   </div>
 
   <!-- Live values -->
@@ -713,6 +728,21 @@ function toggleRainbow(){
   toast(rainbowActive?'RAINBOW ON':'RAINBOW OFF');
 }
 
+function onSpeed(v){
+  v = Math.round(v * 10) / 10;
+  document.getElementById('vSpeed').value = v.toFixed(1);
+  document.getElementById('speedLabel').textContent = v.toFixed(1) + '×';
+  fetch('/api/speed',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({speed:v})});
+}
+function syncSpeed(v){
+  v = Math.max(0.1, Math.min(10, v));
+  document.getElementById('fSpeed').value = v;
+  document.getElementById('speedLabel').textContent = v.toFixed(1) + '×';
+  fetch('/api/speed',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({speed:v})});
+}
+
 function toggleDemo(){
   demoActive=!demoActive;
   if(demoActive) rainbowActive=false;
@@ -741,6 +771,13 @@ function syncFromServer(){
     demoActive=d.demo_mode;
     document.getElementById('rainbowBtn').classList.toggle('active',rainbowActive);
     document.getElementById('demoBtn').classList.toggle('active',demoActive);
+    // Speed
+    if(d.anim_speed !== undefined){
+      var spd=d.anim_speed;
+      document.getElementById('fSpeed').value=spd;
+      document.getElementById('vSpeed').value=spd.toFixed(1);
+      document.getElementById('speedLabel').textContent=spd.toFixed(1)+'×';
+    }
     // Mode label
     var lbl=document.getElementById('modeLabel');
     lbl.textContent=d.demo_mode?'DEMO':d.rainbow_mode?'RAINBOW':'MANUAL';
@@ -809,11 +846,12 @@ def api_state():
             "w":            dmx[b + CH_WHITE],
             "pan":          dmx[b + CH_PAN],
             "tilt":         dmx[b + CH_TILT],
-            "demo_mode":       demo_mode,
-            "rainbow_mode":    rainbow_mode,
-            "pkt_count":       pkt_count,
+            "demo_mode":        demo_mode,
+            "rainbow_mode":     rainbow_mode,
+            "anim_speed":       anim_speed,
+            "pkt_count":        pkt_count,
             "last_send_reason": last_send_reason,
-            "target":          dict(target),
+            "target":           dict(target),
         })
 
 @app.route("/api/set", methods=["POST"])
@@ -850,6 +888,14 @@ def api_command():
     elif cmd == "demo_off":
         with mode_lock: demo_mode = False
     return jsonify({"status": "ok"})
+
+@app.route("/api/speed", methods=["POST"])
+def api_speed():
+    global anim_speed
+    data = request.get_json() or {}
+    if "speed" in data:
+        anim_speed = max(0.1, min(10.0, float(data["speed"])))
+    return jsonify({"status": "ok", "speed": anim_speed})
 
 @app.route("/api/target", methods=["POST"])
 def api_target():

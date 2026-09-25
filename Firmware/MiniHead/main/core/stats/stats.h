@@ -89,7 +89,7 @@ static void handleGetStats(AsyncWebServerRequest* req) {
 static void handleDeleteStats(AsyncWebServerRequest* req) {
   String confirm = req->hasParam("confirm") ? req->getParam("confirm")->value() : "";
   if (confirm != "DELETE") {
-    sendJson(req, 400, "{\"status\":\"error\",\"message\":\"Pass ?confirm=DELETE to reset\"}");
+    sendJson(req, 200, "{\"status\":\"confirm\",\"message\":\"Send DELETE /api/stats?confirm=DELETE to reset all counters\"}");
     return;
   }
   _statsRunMs = _statsPanDeg = _statsTiltDeg = 0.0;

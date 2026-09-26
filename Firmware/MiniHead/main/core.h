@@ -195,13 +195,18 @@ void core_loop() {
         _curPanF  += SERVO_SMOOTH * (_tgtPan  - _curPanF);
       if (fabsf(_tgtTilt - _curTiltF) > SERVO_DEADBAND)
         _curTiltF += SERVO_SMOOTH * (_tgtTilt - _curTiltF);
-      // Only write PWM when position actually changed — avoids constant
-      // micro-corrections that keep the motor energised and hot.
-      static int _lastPanUs = -1, _lastTiltUs = -1;
-      int panUs  = map((int)_curPanF,  0, 270, 500, 2500);
-      int tiltUs = map((int)_curTiltF, 0, 270, 500, 2500);
-      if (panUs  != _lastPanUs)  { servoPan.writeMicroseconds(panUs);   _lastPanUs  = panUs;  }
-      if (tiltUs != _lastTiltUs) { servoTilt.writeMicroseconds(tiltUs); _lastTiltUs = tiltUs; }
+      // Write PWM when position changed OR once per second as a forced
+      // refresh — the LEDC channel can lose state after a WiFi reconnect
+      // or a flash stall, and without the refresh the servo goes limp
+      // until the next value change happens to trigger a re-write.
+      static int           _lastPanUs      = -1, _lastTiltUs      = -1;
+      static unsigned long _lastServoSync  = 0;
+      bool forceSync = (now - _lastServoSync >= 1000);
+      if (forceSync) _lastServoSync = now;
+      int panUs  = constrain(map((int)_curPanF,  0, 270, 500, 2500), 500, 2500);
+      int tiltUs = constrain(map((int)_curTiltF, 0, 270, 500, 2500), 500, 2500);
+      if (panUs  != _lastPanUs  || forceSync) { servoPan.writeMicroseconds(panUs);   _lastPanUs  = panUs;  }
+      if (tiltUs != _lastTiltUs || forceSync) { servoTilt.writeMicroseconds(tiltUs); _lastTiltUs = tiltUs; }
     }
   }
 

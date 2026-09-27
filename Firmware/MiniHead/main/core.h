@@ -202,7 +202,13 @@ void core_loop() {
       static int           _lastPanUs      = -1, _lastTiltUs      = -1;
       static unsigned long _lastServoSync  = 0;
       bool forceSync = (now - _lastServoSync >= 1000);
-      if (forceSync) _lastServoSync = now;
+      if (forceSync) {
+        _lastServoSync = now;
+        // Re-attach if LEDC channel lost its pin binding (happens silently after
+        // certain WiFi/flash events — writeMicroseconds() is a no-op when detached).
+        if (!servoPan.attached())  { servoPan.setPeriodHertz(50);  servoPan.attach(SERVO_PAN_PIN,  500, 2500); _lastPanUs  = -1; }
+        if (!servoTilt.attached()) { servoTilt.setPeriodHertz(50); servoTilt.attach(SERVO_TIL_PIN, 500, 2500); _lastTiltUs = -1; }
+      }
       int panUs  = constrain(map((int)_curPanF,  0, 270, 500, 2500), 500, 2500);
       int tiltUs = constrain(map((int)_curTiltF, 0, 270, 500, 2500), 500, 2500);
       if (panUs  != _lastPanUs  || forceSync) { servoPan.writeMicroseconds(panUs);   _lastPanUs  = panUs;  }

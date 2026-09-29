@@ -10,8 +10,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nano Moving Light</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -67,7 +65,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   </div>
 </header>
 <!-- AP no-password warning — only shown in AP mode without a password -->
-<div id="ap-pw-warning" style="display:none;background:var(--danger,#ff4444);color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:1px;text-align:center;padding:6px 12px;">
+<div id="ap-pw-warning" style="display:none;background:var(--danger,#ff4444);color:#fff;font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.3px;text-align:center;padding:6px 12px;">
   ⚠ HOTSPOT HAS NO PASSWORD — set one in AP Settings below
 </div>
 <div id="artnet-bar">
@@ -105,7 +103,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
         <div class="seq-label">LOOP</div>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" id="seqLoop" checked style="accent-color:var(--accent3);width:18px;height:18px;">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Repeat</span>
+          <span style="font-family:var(--sans);font-size:12px;color:var(--text-dim)">Repeat</span>
         </label>
       </div>
     </div>
@@ -113,16 +111,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       <button class="btn success" id="seqStartBtn" onclick="startSequencer()">START</button>
       <button class="btn danger" onclick="stopSequencer()">STOP</button>
     </div>
-    <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
+    <div style="margin-top:8px;font-family:var(--sans);font-size:11px;color:var(--text-dim)" id="seqStatus">Sequencer idle</div>
   </div>
 
   <!-- Modules: Network Heads + Art-Net Patch + Debugger -->
   <div class="area-future" style="background:var(--bg)">
     <div class="panel" id="module-container" style="border-bottom:1px solid var(--border)">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
+      <div style="font-family:var(--sans);font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading...</div>
     </div>
     <div class="panel" id="artnet-module-container" style="border-bottom:1px solid var(--border)">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net...</div>
+      <div style="font-family:var(--sans);font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Art-Net...</div>
     </div>
     <!-- AP Settings — only visible in AP/hotspot mode -->
     <div class="panel" id="ap-settings-panel" style="display:none;border-bottom:1px solid var(--border)">
@@ -131,13 +129,13 @@ const char INDEX_HTML[] PROGMEM = R"=====(
         <div class="motion-label" style="font-size:10px;min-width:72px;">PASSWORD</div>
         <input type="password" id="apPwInput" placeholder="min. 8 chars (empty = open)"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
-                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
+                 padding:5px 8px;font-family:var(--sans);font-size:13px;border-radius:3px;outline:none;">
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn primary" style="flex:1;" onclick="apSetPassword()">SET PASSWORD</button>
         <button class="btn" onclick="apClearPassword()" style="color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">CLEAR</button>
       </div>
-      <div id="ap-pw-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
+      <div id="ap-pw-status" style="font-family:var(--sans);font-size:11px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
     </div>
     <!-- Saved WiFi Networks — add/remove networks without reflashing -->
     <div class="panel" id="wifi-networks-panel" style="border-bottom:1px solid var(--border)">
@@ -147,22 +145,22 @@ const char INDEX_HTML[] PROGMEM = R"=====(
         <div class="motion-label" style="font-size:10px;min-width:72px;">SSID</div>
         <input type="text" id="wnSsidInput" placeholder="Network name" maxlength="32"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
-                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
+                 padding:5px 8px;font-family:var(--sans);font-size:13px;border-radius:3px;outline:none;">
       </div>
       <div class="motion-row" style="margin-bottom:8px;">
         <div class="motion-label" style="font-size:10px;min-width:72px;">PASSWORD</div>
         <input type="password" id="wnPwInput" placeholder="min. 8 chars (empty = open)" maxlength="64"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
-                 padding:5px 8px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;">
+                 padding:5px 8px;font-family:var(--sans);font-size:13px;border-radius:3px;outline:none;">
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn primary" style="flex:1;" onclick="wnAdd()">ADD NETWORK</button>
         <button class="btn" onclick="wnReboot()" style="color:var(--danger,#ff4444);border-color:var(--danger,#ff4444);">REBOOT</button>
       </div>
-      <div id="wn-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
+      <div id="wn-status" style="font-family:var(--sans);font-size:11px;color:var(--text-dim);margin-top:6px;min-height:14px;"></div>
     </div>
     <div class="panel" id="debugger-module-container">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Debugger...</div>
+      <div style="font-family:var(--sans);font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;">Loading Debugger...</div>
     </div>
   </div>
 
@@ -227,7 +225,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   <div class="panel area-serial col-right">
     <div class="panel-title">// Serial</div>
     <div class="serial-row">
-      <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45">
+      <input type="text" id="cmdInput" placeholder="R:255,G:0,B:0,W:0,PAN:90,TILT:45" style="font-family:var(--mono);">
       <button class="btn primary" onclick="sendRaw()">SEND</button>
     </div>
   </div>
@@ -242,7 +240,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     <div class="modal-title">// Edit Targets</div>
     <div id="cueEditList"></div>
     <div style="margin-top:10px;">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
+      <div style="font-family:var(--sans);font-size:11px;color:var(--text-dim);margin-bottom:5px;">EXTRA IDs (comma-separated):</div>
       <input type="text" id="cueEditFree" placeholder="4, 5, 6" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 8px;font-family:var(--mono);font-size:12px;border-radius:4px;outline:none;">
     </div>
     <div class="modal-footer">
@@ -314,7 +312,7 @@ function onSpeed(){
 }
 function loadCues(){fetch('/api/cues').then(function(r){return r.json();}).then(renderCues);}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function renderCues(cues){var list=document.getElementById('cueList');if(!cues.length){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:20px 0;">No cues saved yet</div>';return;}list.innerHTML='';cues.forEach(function(cue){var inSeq=seqSelectedIds.indexOf(cue.id)>=0,wr=Math.min(255,cue.r+cue.w),wg=Math.min(255,cue.g+cue.w),wb=Math.min(255,cue.b+cue.w),el=document.createElement('div');el.className='cue-item'+(inSeq?' seq-selected':'');el.draggable=true;el.dataset.cueId=cue.id;var ftStr=(cue.fixTargets&&cue.fixTargets.length)?' <span style="color:var(--accent3)">\u2192 '+(cue.fixTargets.map(function(id){return id===0?'ALL':'#'+id;}).join(' '))+'</span>':'';el.innerHTML='<div class="cue-drag" title="Drag to reorder">&#8942;</div><div class="cue-swatch" style="background:rgb('+wr+','+wg+','+wb+')"></div><div class="cue-info"><div class="cue-name">'+escHtml(cue.name)+'</div><div class="cue-meta">P:'+cue.pan+'deg T:'+cue.tilt+'deg W:'+cue.w+ftStr+'</div></div><div class="cue-actions"><button class="icon-btn" title="Edit targets" onclick="editCue('+cue.id+','+JSON.stringify(cue.fixTargets||[0])+')">&#9998;</button><button class="icon-btn" onclick="toggleSeqCue('+cue.id+')">+</button><button class="icon-btn" onclick="fireCue('+cue.id+')">GO</button><button class="icon-btn del" onclick="deleteCue('+cue.id+')">X</button></div>';el.addEventListener('dragstart',function(e){_cDragId=cue.id;e.dataTransfer.effectAllowed='move';el.classList.add('dragging');});el.addEventListener('dragend',function(){el.classList.remove('dragging');document.querySelectorAll('.cue-item.drag-over').forEach(function(x){x.classList.remove('drag-over');});});el.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';el.classList.add('drag-over');});el.addEventListener('dragleave',function(e){if(!el.contains(e.relatedTarget))el.classList.remove('drag-over');});el.addEventListener('drop',function(e){e.preventDefault();el.classList.remove('drag-over');if(_cDragId===cue.id)return;var items=document.querySelectorAll('.cue-item[data-cue-id]'),order=[];items.forEach(function(x){order.push(+x.dataset.cueId);});var fi=order.indexOf(_cDragId),ti=order.indexOf(cue.id);if(fi<0||ti<0)return;order.splice(fi,1);order.splice(ti,0,_cDragId);fetch('/api/cues/reorder',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})}).then(function(){loadCues();});});list.appendChild(el);});}
+function renderCues(cues){var list=document.getElementById('cueList');if(!cues.length){list.innerHTML='<div style="font-family:var(--sans);font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;">No cues saved yet</div>';return;}list.innerHTML='';cues.forEach(function(cue){var inSeq=seqSelectedIds.indexOf(cue.id)>=0,wr=Math.min(255,cue.r+cue.w),wg=Math.min(255,cue.g+cue.w),wb=Math.min(255,cue.b+cue.w),el=document.createElement('div');el.className='cue-item'+(inSeq?' seq-selected':'');el.draggable=true;el.dataset.cueId=cue.id;var ftStr=(cue.fixTargets&&cue.fixTargets.length)?' <span style="color:var(--accent3)">\u2192 '+(cue.fixTargets.map(function(id){return id===0?'ALL':'#'+id;}).join(' '))+'</span>':'';el.innerHTML='<div class="cue-drag" title="Drag to reorder">&#8942;</div><div class="cue-swatch" style="background:rgb('+wr+','+wg+','+wb+')"></div><div class="cue-info"><div class="cue-name">'+escHtml(cue.name)+'</div><div class="cue-meta">P:'+cue.pan+'deg T:'+cue.tilt+'deg W:'+cue.w+ftStr+'</div></div><div class="cue-actions"><button class="icon-btn" title="Edit targets" onclick="editCue('+cue.id+','+JSON.stringify(cue.fixTargets||[0])+')">&#9998;</button><button class="icon-btn" onclick="toggleSeqCue('+cue.id+')">+</button><button class="icon-btn" onclick="fireCue('+cue.id+')">GO</button><button class="icon-btn del" onclick="deleteCue('+cue.id+')">X</button></div>';el.addEventListener('dragstart',function(e){_cDragId=cue.id;e.dataTransfer.effectAllowed='move';el.classList.add('dragging');});el.addEventListener('dragend',function(){el.classList.remove('dragging');document.querySelectorAll('.cue-item.drag-over').forEach(function(x){x.classList.remove('drag-over');});});el.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';el.classList.add('drag-over');});el.addEventListener('dragleave',function(e){if(!el.contains(e.relatedTarget))el.classList.remove('drag-over');});el.addEventListener('drop',function(e){e.preventDefault();el.classList.remove('drag-over');if(_cDragId===cue.id)return;var items=document.querySelectorAll('.cue-item[data-cue-id]'),order=[];items.forEach(function(x){order.push(+x.dataset.cueId);});var fi=order.indexOf(_cDragId),ti=order.indexOf(cue.id);if(fi<0||ti<0)return;order.splice(fi,1);order.splice(ti,0,_cDragId);fetch('/api/cues/reorder',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})}).then(function(){loadCues();});});list.appendChild(el);});}
 function saveCue(){var name=document.getElementById('cueName').value.trim();if(!name){toast('Enter a cue name','err');return;}var v=getValues();var ft=(typeof nh_getSelectedFixIDs==='function')?nh_getSelectedFixIDs():[];if(!ft.length)ft=[0];fetch('/api/cues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,r:v.r,g:v.g,b:v.b,w:v.w,pan:v.pan,tilt:v.tilt,fixTargets:ft})}).then(function(){document.getElementById('cueName').value='';toast('Cue saved');loadCues();});}
 function fireCue(id){fetch('/api/cues/'+id+'/fire',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d.status==='ok'){toast('Cue fired');fetch('/api/cues').then(function(r){return r.json();}).then(function(cues){var cue=cues.find(function(c){return c.id===id;});if(cue){document.getElementById('fR').value=cue.r;document.getElementById('fG').value=cue.g;document.getElementById('fB').value=cue.b;document.getElementById('fW').value=cue.w;document.getElementById('fPan').value=cue.pan;document.getElementById('fTilt').value=cue.tilt;onFader();onMotion();}});}});}
 function deleteCue(id){seqSelectedIds=seqSelectedIds.filter(function(i){return i!==id;});fetch('/api/cues/'+id,{method:'DELETE'}).then(function(){toast('Cue deleted');loadCues();});}
@@ -352,12 +350,12 @@ function wnRender(list){
   var box=document.getElementById('wnList');
   box.innerHTML='';
   if(!list||!list.length){
-    box.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px 0;">No saved networks</div>';
+    box.innerHTML='<div style="font-family:var(--sans);font-size:11px;color:var(--text-dim);padding:4px 0;">No saved networks</div>';
     return;
   }
   list.forEach(function(n){
     var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-family:var(--mono);font-size:12px;';
+    row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-family:var(--sans);font-size:13px;';
     var label=document.createElement('span');
     label.textContent=n.ssid;
     var del=document.createElement('button');
